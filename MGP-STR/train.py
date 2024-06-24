@@ -5,6 +5,7 @@ import random
 import string
 import argparse
 import re
+import pickle
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -30,11 +31,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def train(opt):
     """ dataset preparation """
-    if not opt.data_filtering_off:
-        print('Filtering the images containing characters which are not in opt.character')
-        print('Filtering the images whose label is longer than opt.batch_max_length')
-        # see https://github.com/clovaai/deep-text-recognition-benchmark/blob/6593928855fb7abb999a99f428b3e4477d4ae356/dataset.py#L130
-
     opt.select_data = opt.select_data.split('-')
     opt.batch_ratio = opt.batch_ratio.split('-')
     opt.eval = False
@@ -45,8 +41,6 @@ def train(opt):
     val_opt = copy.deepcopy(opt)
     val_opt.eval = True
     
-    if opt.sensitive:
-        opt.data_filtering_off = True
     AlignCollate_valid = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, opt=val_opt)
     valid_dataset, _ = hierarchical_dataset(root=opt.valid_data, opt=val_opt)
     valid_loader = torch.utils.data.DataLoader(
@@ -69,11 +63,11 @@ def train(opt):
 
     model = Model(opt)
 
-    print(model)
+    # print(model)
 
     # data parallel for multi-GPU
     model.to(device)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[opt.gpu], find_unused_parameters=True)
+    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[opt.gpu], find_unused_parameters=True)
     
     model.train()
     
@@ -107,7 +101,7 @@ def train(opt):
 
     """ final options """
     # print(opt)
-    with open(f'{opt.saved_path}/{opt.exp_name}/opt.txt', 'a') as opt_file:
+    with open(f'{opt.saved_path}/{opt.exp_name}/opt.txt', 'a', encoding='utf-8') as opt_file:
         opt_log = '------------ Options -------------\n'
         args = vars(opt)
         for k, v in args.items():
@@ -168,7 +162,8 @@ def train(opt):
         loss_avg.add(cost)
 
         # validation part
-        if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0' 
+        # if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0' 
+        if (iteration + 1) % opt.valInterval == 0 or iteration == 0:   
             elapsed_time = time.time() - start_time
             # for log
             print("LR",scheduler.get_last_lr()[0])
@@ -225,7 +220,8 @@ def train(opt):
                 log.write(predicted_result_log + '\n')
 
         # save model per 1e+5 iter.
-        if utils.is_main_process() and (iteration + 1) % 5e+3 == 0:
+        # if utils.is_main_process() and (iteration + 1) % 5e+3 == 0:
+        if (iteration + 1) % 5e+3 == 0:
             torch.save(
                 model.state_dict(), f'{opt.saved_path}/{opt.exp_name}/iter_{iteration+1}.pth')
 
@@ -240,6 +236,12 @@ if __name__ == '__main__':
 
     opt = get_args()
 
+    if 'pkl' in opt.character:
+        with open(opt.character, 'rb') as f:
+            extended_char = pickle.load(f)
+        opt.character = ''.join(extended_char)
+
+
     if not opt.exp_name:
         opt.exp_name = f'{opt.TransformerModel}' if opt.Transformer else f'{opt.Transformation}-{opt.FeatureExtraction}-{opt.SequenceModeling}-{opt.Prediction}'
 
@@ -251,13 +253,15 @@ if __name__ == '__main__':
     if opt.sensitive:
         opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
     
-    utils.init_distributed_mode(opt)
+    # utils.init_distributed_mode(opt)
 
     print(opt)
     
     """ Seed and GPU setting """
     
-    seed = opt.manualSeed + utils.get_rank()
+    # seed = opt.manualSeed + utils.get_rank()
+    
+    seed = opt.manualSeed
     
     random.seed(seed)
     np.random.seed(seed)
@@ -268,8 +272,8 @@ if __name__ == '__main__':
     cudnn.deterministic = True
     opt.num_gpu = torch.cuda.device_count()
     
-    num_tasks = utils.get_world_size()
-    global_rank = utils.get_rank()
+    # num_tasks = utils.get_world_size()
+    # global_rank = utils.get_rank()
     
     train(opt)
 
