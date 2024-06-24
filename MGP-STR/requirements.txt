@@ -1,0 +1,13 @@
+validators
+torch
+torchvision
+timm
+lmdb
+pillow
+nltk
+natsort
+opencv-python
+opencv-contrib-python
+wand
+transformers
+strsimpy
