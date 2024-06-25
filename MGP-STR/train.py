@@ -25,12 +25,18 @@ import utils_dist as utils
 import torch.nn as nn
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import torch.nn.functional as F
+from tqdm.auto import tqdm
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def train(opt):
     """ dataset preparation """
+    if not opt.data_filtering_off:
+        print('Filtering the images containing characters which are not in opt.character')
+        print('Filtering the images whose label is longer than opt.batch_max_length')
+        # see https://github.com/clovaai/deep-text-recognition-benchmark/blob/6593928855fb7abb999a99f428b3e4477d4ae356/dataset.py#L130
+
     opt.select_data = opt.select_data.split('-')
     opt.batch_ratio = opt.batch_ratio.split('-')
     opt.eval = False
@@ -41,6 +47,8 @@ def train(opt):
     val_opt = copy.deepcopy(opt)
     val_opt.eval = True
     
+    if opt.sensitive:
+        opt.data_filtering_off = True
     AlignCollate_valid = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, opt=val_opt)
     valid_dataset, _ = hierarchical_dataset(root=opt.valid_data, opt=val_opt)
     valid_loader = torch.utils.data.DataLoader(
@@ -67,7 +75,7 @@ def train(opt):
 
     # data parallel for multi-GPU
     model.to(device)
-    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[opt.gpu], find_unused_parameters=True)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[opt.gpu], find_unused_parameters=True)
     
     model.train()
     
@@ -101,7 +109,7 @@ def train(opt):
 
     """ final options """
     # print(opt)
-    with open(f'{opt.saved_path}/{opt.exp_name}/opt.txt', 'a', encoding='utf-8') as opt_file:
+    with open(f'{opt.saved_path}/{opt.exp_name}/opt.txt', 'a') as opt_file:
         opt_log = '------------ Options -------------\n'
         args = vars(opt)
         for k, v in args.items():
@@ -128,7 +136,10 @@ def train(opt):
     iteration = start_iter
             
     print("LR",scheduler.get_last_lr()[0])
-        
+    
+    pbar = tqdm(total=opt.num_iter, disable=not utils.is_main_process())
+    pbar.update(iteration)
+
     while(True):
         # train part
         image_tensors, labels = train_dataset.get_batch()
@@ -162,8 +173,7 @@ def train(opt):
         loss_avg.add(cost)
 
         # validation part
-        # if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0' 
-        if (iteration + 1) % opt.valInterval == 0 or iteration == 0:   
+        if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0' 
             elapsed_time = time.time() - start_time
             # for log
             print("LR",scheduler.get_last_lr()[0])
@@ -183,6 +193,9 @@ def train(opt):
                 loss_log = f'[{iteration+1}/{opt.num_iter}] LR: {scheduler.get_last_lr()[0]:0.5f}, Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
                 loss_avg.reset()
                 current_model_log = f'{"char_accuracy":17s}: {char_accuracy:0.3f}, {"bpe_accuracy":17s}: {bpe_accuracy:0.3f}, {"wp_accuracy":17s}: {wp_accuracy:0.3f}, {"fused_accuracy":17s}: {final_accuracy:0.3f}'
+                #
+                pbar.set_postfix({"Train Loss": f"{loss_avg.val():0.5f}", "Valid Loss": f"{valid_loss:0.5f}", "Best Accuracy": f"{best_accuracy:0.3f}"})
+                #
 
                 # keep best accuracy model (on valid dataset)
                 if cur_best > best_accuracy:
@@ -191,7 +204,7 @@ def train(opt):
                 best_model_log = f'{"Best_accuracy":17s}: {best_accuracy:0.3f}'
 
                 loss_model_log = f'{loss_log}\n{current_model_log}\n{best_model_log}'
-                print(loss_model_log)
+                # print(loss_model_log)
                 log.write(loss_model_log + '\n')
 
                 # show some predicted results
@@ -220,25 +233,32 @@ def train(opt):
                 log.write(predicted_result_log + '\n')
 
         # save model per 1e+5 iter.
-        # if utils.is_main_process() and (iteration + 1) % 5e+3 == 0:
-        if (iteration + 1) % 5e+3 == 0:
+        if utils.is_main_process() and (iteration + 1) % 5e+3 == 0:
             torch.save(
                 model.state_dict(), f'{opt.saved_path}/{opt.exp_name}/iter_{iteration+1}.pth')
 
-        if (iteration + 1) == opt.num_iter:
-            print('end the training')
-            sys.exit()
         iteration += 1
+        pbar.update(1)
+        
         if scheduler is not None:
             scheduler.step()
+        
+        if (iteration + 1) == opt.num_iter:
+            print('end the training')
+            pbar.close()
+            sys.exit()
+
+    pbar.close()
+
+
 
 if __name__ == '__main__':
 
     opt = get_args()
-
     if 'pkl' in opt.character:
         with open(opt.character, 'rb') as f:
             extended_char = pickle.load(f)
+        extended_char.append(' ')
         opt.character = ''.join(extended_char)
 
 
@@ -253,15 +273,13 @@ if __name__ == '__main__':
     if opt.sensitive:
         opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
     
-    # utils.init_distributed_mode(opt)
+    utils.init_distributed_mode(opt)
 
     print(opt)
     
     """ Seed and GPU setting """
     
-    # seed = opt.manualSeed + utils.get_rank()
-    
-    seed = opt.manualSeed
+    seed = opt.manualSeed + utils.get_rank()
     
     random.seed(seed)
     np.random.seed(seed)
@@ -272,8 +290,7 @@ if __name__ == '__main__':
     cudnn.deterministic = True
     opt.num_gpu = torch.cuda.device_count()
     
-    # num_tasks = utils.get_world_size()
-    # global_rank = utils.get_rank()
+    num_tasks = utils.get_world_size()
+    global_rank = utils.get_rank()
     
     train(opt)
-

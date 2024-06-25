@@ -152,7 +152,8 @@ def get_args(is_train=True):
                         help='assign ratio for each selected data in the batch')
     parser.add_argument('--total_data_usage_ratio', type=str, default='1.0',
                         help='total data usage ratio, this ratio is multiplied to total number of data.')
-    parser.add_argument('--batch_max_length', type=int, default=25, help='maximum-label-length')
+    # parser.add_argument('--batch_max_length', type=int, default=25, help='maximum-label-length')
+    parser.add_argument('--batch_max_length', type=int, default=80, help='maximum-label-length')
     parser.add_argument('--imgH', type=int, default=32, help='the height of the input image')
     parser.add_argument('--imgW', type=int, default=128, help='the width of the input image')
     parser.add_argument('--rgb', action='store_true', help='use rgb input')
@@ -210,7 +211,7 @@ def get_args(is_train=True):
     # orig paper uses this for fast benchmarking
     parser.add_argument('--fast_acc', action='store_true', help='Fast average accuracy computation')
    
-    parser.add_argument("--local_rank", type=int, default=-1)
+    parser.add_argument("--local-rank", type=int, default=-1)
     parser.add_argument('--world_size', default=1, type=int,
                         help='number of distributed processes')
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')

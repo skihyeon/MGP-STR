@@ -87,9 +87,10 @@ class Batch_Balanced_Dataset(object):
             batch_size_list.append(str(_batch_size))
             Total_batch_size += _batch_size
 
+            train_sampler = DistributedSampler(_dataset)
             _data_loader = torch.utils.data.DataLoader(
                 _dataset, batch_size=_batch_size,
-                shuffle=True,
+                sampler=train_sampler,
                 num_workers=int(opt.workers),
                 collate_fn=_AlignCollate, pin_memory=True)
             self.data_loader_list.append(_data_loader)
