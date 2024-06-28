@@ -111,6 +111,8 @@ def benchmark_all_eval(model, criterion, converter, opt): #, calculate_infer_tim
     return [char_total_accuracy, bpe_total_accuracy, wp_total_accuracy, fused_total_accuracy]
 
 
+from tqdm import tqdm
+
 def validation(model, criterion, evaluation_loader, converter, opt):
     """ validation or evaluation """
     char_n_correct = 0
@@ -122,7 +124,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
     infer_time = 0
     valid_loss_avg = Averager()
 
-    for i, (image_tensors, labels, imgs_path) in enumerate(evaluation_loader):
+    for i, (image_tensors, labels, imgs_path) in enumerate(tqdm(evaluation_loader, desc="Validation Progress")):
         batch_size = image_tensors.size(0)
         length_of_data = length_of_data + batch_size
         image = image_tensors.to(device)
