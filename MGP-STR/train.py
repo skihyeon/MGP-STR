@@ -168,7 +168,7 @@ def train(opt):
         loss_avg.add(cost)
 
         # validation part
-        if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0' 
+        if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0'  
             elapsed_time = time.time() - start_time
             # for log
             print("LR",scheduler.get_last_lr()[0])
@@ -284,8 +284,8 @@ if __name__ == '__main__':
 
     cudnn.benchmark = True
     cudnn.deterministic = True
-    opt.gpu = torch.cuda.device_count()
-    opt.gpu = 0
+    opt.num_gpu = torch.cuda.device_count()
+    
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
     
