@@ -1,0 +1,1 @@
+python test_final.py --eval_data C:/Users/ys/Desktop/sgh/MGP-STR/data_lmdb/val --Transformer mgp-str  --data_filtering_off --rgb --TransformerModel=mgp_str_base_patch4_3_32_128 --model_dir ./model_files/mgp_str_base.pth
