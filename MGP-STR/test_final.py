@@ -382,11 +382,26 @@ def test(opt):
                 shuffle=False,
                 num_workers=int(opt.workers),
                 collate_fn=AlignCollate_evaluation, pin_memory=True)
-            _, accuracy_by_best_model, _, _, _, _, _, _ = validation(
+            
+            _, accuracy_list, preds_str, _, labels, _, _, _ = validation(
                 model, criterion, evaluation_loader, converter, opt)
             log.write(eval_data_log)
-            print(f'{accuracy_by_best_model[0]:0.3f}')
-            log.write(f'{accuracy_by_best_model[0]:0.3f}\n')
+            from datetime import datetime
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            log.write(f'\ncurrent_time: {current_time}\n')
+            print(f'accuracy: {accuracy_list[0] : 0.3f}')
+            dashed_line = '-' * 80
+            head = f'{"Ground Truth":25s} | {"Prediction":25s} |  T/F'
+            predicted_result_log = f'{dashed_line}\n{head}\n{dashed_line}\n'
+            for i, (label, pred) in enumerate(zip(labels, preds_str)):
+                if i % (len(labels) // 10) == 0:
+                    # label = label[:label.find('[s]')]
+                    pred = pred[:pred.find('[s]')]
+                    predicted_result_log += f'{label:25s} | {pred:25s} | \t{str(pred == label)}\n'
+            predicted_result_log += f'{dashed_line}'
+            log.write(f'accuracy: {accuracy_list[0] : 0.3f}\n')
+            print(predicted_result_log)
+            log.write(predicted_result_log + '\n')
             log.close()
 
 # https://github.com/clovaai/deep-text-recognition-benchmark/issues/125
@@ -414,6 +429,11 @@ if __name__ == '__main__':
     """ vocab / character number configuration """
     if opt.sensitive:
         opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+    import pickle
+    with open('korean_dict.pkl', 'rb') as f:
+        extended_char = pickle.load(f)
+        extended_char.append(' ')
+    opt.character = ''.join(extended_char)
 
     cudnn.benchmark = True
     cudnn.deterministic = True

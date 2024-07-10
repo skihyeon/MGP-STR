@@ -166,9 +166,12 @@ def train(opt):
         optimizer.step()
 
         loss_avg.add(cost)
+        pbar.set_postfix({"Train Loss": f"{loss_avg.val():0.5f}"})
+        # pbar.update(1)
 
         # validation part
-        if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0'  
+        # if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0'  
+        if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0):
             elapsed_time = time.time() - start_time
             # for log
             print("LR",scheduler.get_last_lr()[0])
@@ -186,9 +189,6 @@ def train(opt):
                 model.train()
 
                 loss_log = f'[{iteration+1}/{opt.num_iter}] LR: {scheduler.get_last_lr()[0]:0.5f}, Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
-                #
-                pbar.set_postfix({"Train Loss": f"{loss_avg.val():0.5f}", "Valid Loss": f"{valid_loss:0.5f}", "Best Accuracy": f"{best_accuracy:0.3f}"})
-                #
                 loss_avg.reset()
                 current_model_log = f'{"char_accuracy":17s}: {char_accuracy:0.3f}, {"bpe_accuracy":17s}: {bpe_accuracy:0.3f}, {"wp_accuracy":17s}: {wp_accuracy:0.3f}, {"fused_accuracy":17s}: {final_accuracy:0.3f}'
                 
@@ -200,7 +200,7 @@ def train(opt):
                 best_model_log = f'{"Best_accuracy":17s}: {best_accuracy:0.3f}'
 
                 loss_model_log = f'{loss_log}\n{current_model_log}\n{best_model_log}'
-                # print(loss_model_log)
+                print(loss_model_log)
                 log.write(loss_model_log + '\n')
 
                 # show some predicted results
@@ -249,6 +249,7 @@ def train(opt):
 
 
 if __name__ == '__main__':
+    os.environ['NCCL_TIMEOUT'] = '3600'  # 타임아웃을 60분으로 설정
 
     opt = get_args()
     if 'pkl' in opt.character:
