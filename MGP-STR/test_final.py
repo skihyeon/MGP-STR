@@ -112,7 +112,7 @@ def benchmark_all_eval(model, criterion, converter, opt): #, calculate_infer_tim
 
 
 from tqdm import tqdm
-
+from datetime import datetime
 def validation(model, criterion, evaluation_loader, converter, opt):
     """ validation or evaluation """
     char_n_correct = 0
@@ -123,7 +123,10 @@ def validation(model, criterion, evaluation_loader, converter, opt):
     length_of_data = 0
     infer_time = 0
     valid_loss_avg = Averager()
-
+    valid_log = open(f'./result/valid.log', 'a')
+    valid_log.write("*" * 100 + "\n")
+    valid_log.write(datetime.now().strftime('%Y-%m-%d %H:%M:%S') + "\n")
+    valid_log.write("*" * 100 + "\n")
     for i, (image_tensors, labels, imgs_path) in enumerate(tqdm(evaluation_loader, desc="Validation Progress")):
         batch_size = image_tensors.size(0)
         length_of_data = length_of_data + batch_size
@@ -185,6 +188,8 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                 char_pred_max_prob = char_preds_max_prob[index]
                 char_pred_EOS = char_pred.find('[s]')
                 char_pred = char_pred[:char_pred_EOS]  # prune after "end of sentence" token ([s])
+                print(f'char_pred = {char_pred}, gt = {gt}, Correct: {char_pred == gt}')
+                valid_log.write(f' GT: {gt}, Pred: {char_pred}, Correct: {char_pred == gt}\n')
                 if char_pred == gt:
                     char_n_correct += 1
                 char_pred_max_prob = char_pred_max_prob[:char_pred_EOS+1]
@@ -272,6 +277,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                 char_pred_max_prob = char_preds_max_prob[index]
                 char_pred_EOS = char_pred.find('[s]')
                 char_pred = char_pred[:char_pred_EOS]  # prune after "end of sentence" token ([s])
+                
                 if char_pred == gt:
                     char_n_correct += 1
                 char_pred_max_prob = char_pred_max_prob[:char_pred_EOS+1]
@@ -288,11 +294,13 @@ def validation(model, criterion, evaluation_loader, converter, opt):
 
                 confidence_score_list.append(char_confidence_score)
 
+
     char_accuracy = char_n_correct/float(length_of_data) * 100
     bpe_accuracy = bpe_n_correct / float(length_of_data) * 100
     wp_accuracy = wp_n_correct / float(length_of_data) * 100
     out_accuracy = out_n_correct / float(length_of_data) * 100
 
+    valid_log.close()
     return valid_loss_avg.val(), [char_accuracy, bpe_accuracy, wp_accuracy, out_accuracy], char_preds_str, confidence_score_list, labels, infer_time, length_of_data, [char_n_correct, bpe_n_correct, wp_n_correct, out_n_correct]
 
 

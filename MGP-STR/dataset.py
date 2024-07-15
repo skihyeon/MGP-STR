@@ -575,8 +575,11 @@ class LmdbDataset(Dataset):
             sys.exit(0)
 
         with self.env.begin(write=False) as txn:
-            nSamples = int(txn.get('num-samples'.encode()))
-            self.nSamples = nSamples
+            nSamples = txn.get('num-samples'.encode())
+            if nSamples is None:
+                print(f'num-samples 키가 존재하지 않습니다. 폴더명: {root}')
+                sys.exit(0)
+            self.nSamples = int(nSamples)
             if self.opt.data_filtering_off:
                 # for fast check or benchmark evaluation with no filtering
                 self.filtered_index_list = [index + 1 for index in range(self.nSamples)]

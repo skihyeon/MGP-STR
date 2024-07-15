@@ -7,3 +7,5 @@
 *.zip
 *.png
 *.jpg
+*.log
+*.db
