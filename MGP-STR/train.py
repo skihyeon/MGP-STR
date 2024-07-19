@@ -74,9 +74,33 @@ def train(opt):
     
     model.train()
     
+    # if opt.saved_model != '':
+    #     print(f'loading pretrained model from {opt.saved_model}')
+    #     model.load_state_dict(torch.load(opt.saved_model, map_location='cpu'), strict=False)
+    
     if opt.saved_model != '':
         print(f'loading pretrained model from {opt.saved_model}')
-        model.load_state_dict(torch.load(opt.saved_model, map_location='cpu'), strict=True)
+        state_dict = torch.load(opt.saved_model, map_location='cpu')
+        
+        # 새 모델의 state_dict
+        new_state_dict = model.state_dict()
+        
+        # 기존 가중치 복사 및 새 가중치 초기화
+        for name, param in state_dict.items():
+            if name in new_state_dict:
+                if new_state_dict[name].shape != param.shape:
+                    print(f"Skipping parameter {name} due to shape mismatch")
+                    new_state_dict[name][:param.shape[0]] = param
+                    if len(new_state_dict[name].shape) > 1:
+                        nn.init.normal_(new_state_dict[name][param.shape[0]:])
+                    else:
+                        nn.init.zeros_(new_state_dict[name][param.shape[0]:])
+                else:
+                    new_state_dict[name] = param
+        
+        # 새 state_dict 로드
+        model.load_state_dict(new_state_dict)
+
 
     """ setup loss """
     criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
@@ -139,7 +163,16 @@ def train(opt):
         # train part
         image_tensors, labels = train_dataset.get_batch()
         image = image_tensors.to(device)
-        
+
+        ##
+        valid_indices = [i for i, label in enumerate(labels) if len(label) <= opt.batch_max_length]
+        if len(valid_indices) == 0:
+            print("모든 라벨이 batch_max_length를 초과하여 이번 배치를 건너뜁니다.")
+            continue
+        image_tensors = image_tensors[valid_indices]
+        labels = [labels[i] for i in valid_indices]
+        ##
+
         if (opt.Transformer in ["mgp-str"]):
             len_target, char_target = converter.char_encode(labels) 
             bpe_target = converter.bpe_encode(labels)
@@ -249,13 +282,14 @@ def train(opt):
 
 
 if __name__ == '__main__':
-    os.environ['NCCL_TIMEOUT'] = '3600'  # 타임아웃을 60분으로 설정
 
     opt = get_args()
     if 'pkl' in opt.character:
         with open(opt.character, 'rb') as f:
             extended_char = pickle.load(f)
         extended_char.append(' ')
+        extended_char.append('(')
+        extended_char.append(')')
         opt.character = ''.join(extended_char)
 
 

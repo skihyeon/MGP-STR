@@ -1,9 +1,9 @@
-CUDA_VISIBLE_DEVICES=1  python3 -m torch.distributed.launch --nproc_per_node=1 --nnodes=1  --master_port 29501 train.py \
---train_data data/train --valid_data data/val --select_data random_half-korquad_half_fromval-address_fromval-address_half_fromval-enwiki_half_fromval-naverreview_half-kowiki_wl_fromval-namuwiki_half-enwiki_half-law_half-naverreview-law_half_fromval-cn_base_train-fakedata-namuwiki_wl_fromval-address-random-random_half_fromval-enwiki_wl_fromval-namuwiki-fakedata_half-law_fromval-korquad_fromval-kowiki_28-law-fakedata_fromval-fakedata_wl_fromval-korquad-namuwiki_half_fromval-fakedata_wl-kowiki_half-kowiki_wl-enwiki-namuwiki_wl-kowiki-random_fromval-address_half-enwiki_wl-cn_aug_train-naverreview_half_fromval-fakedata_half_fromval-korquad_half-kowiki_half_fromval-kowiki_fromval \
---batch_ratio 0.014717646-0.008556859-0.001957752-0.001957752-0.01161426-0.011622744-0.003504633-0.047861901-0.046416116-0.010083349-0.011622744-0.002525044-0.28517872-0.008366858-0.002277366-0.009461873-0.014717646-0.003117075-0.003313563-0.047861901-0.008366858-0.002525044-0.008556859-0.039212074-0.010083349-0.001771316-0.001124887-0.034329743-0.008581384-0.00451994-0.056071127-0.014042058-0.046416116-0.005042031-0.056071127-0.003117075-0.009461873-0.013257032-0.07129468-0.002319715-0.001771316-0.034329743-0.010499425-0.010499425 \
+OMP_NUM_THREADS=12 CUDA_VISIBLE_DEVICES=1,2,3  python3 -m torch.distributed.launch --nproc_per_node=3 --nnodes=1  --master_port 29502 train.py \
+--train_data data/train --valid_data data/val --select_data korquad_half-law_fromval-kowiki_fromval-random_half-korquad-naverreview-random_half_fromval-fakedata_half_fromval-naverreview_half_fromval-law_half-fakedata_half-address-fakedata-fakedata_wl_fromval-random-korquad_half_fromval-kowiki_wl_fromval-namuwiki_wl_fromval-enwiki_half-namuwiki_half_fromval-kowiki_half-fakedata_wl-address_half_fromval-enwiki_wl-address_half-law-fakedata_fromval-namuwiki_half-enwiki_wl_fromval-random_fromval-namuwiki_wl-bnk_lmdb-namuwiki_fromval-kowiki_28-naverreview_half-korquad_fromval-kowiki_wl-kowiki-enwiki-namuwiki-kowiki_half_fromval-address_fromval-enwiki_half_fromval \
+--batch_ratio 0.049977482-0.003675976-0.015285137-0.021426053-0.049977482-0.016920473-0.004537859-0.002578695-0.003377057-0.014679411-0.012180532-0.013774662-0.012180532-0.001637619-0.021426053-0.012457135-0.005102069-0.003315405-0.06757291-0.01249284-0.081628743-0.006580161-0.002850109-0.019299681-0.013774662-0.014679411-0.002578695-0.069677694-0.004823908-0.004537859-0.007340224-0.016908122-0.037424444-0.01249284-0.057085214-0.016920473-0.012457135-0.020442527-0.081628743-0.06757291-0.069677694-0.002850109-0.016908122 \
 --Transformer mgp-str --TransformerModel=mgp_str_base_patch4_3_32_128 --imgH 32 --imgW 128 --manualSeed=226 \
---workers 24 --scheduler --batch_size=130 --rgb --saved_path ./model_files \
---valInterval 5000 --num_iter 2000000 --lr 1 --character korean_dict.pkl --saved_model ./model_files/mgp_str_base_patch4_3_32_128-Seed226/iter_130000.pth \
---exp_name mgp_str_base_patch4_3_32_128-Seed226_aug --isrand_aug
-
-
+--workers 12 --scheduler --batch_size=50 --saved_path ./model_files \
+--valInterval 10000 --num_iter 2000000 --lr 0.5 --character korean_dict.pkl \
+--saved_model ./model_files/mgp_str_base_patch4_3_32_128-Seed226_aug-Seed226/iter_365000.pth \
+--exp_name mgp_str_base_patch4_3_32_128-Seed226_aug \
+--rgb --PAD

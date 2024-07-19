@@ -1,1 +1,1 @@
-python test_final.py --eval_data ./data/random_val_lmdb --Transformer mgp-str  --data_filtering_off --rgb --TransformerModel=mgp_str_base_patch4_3_32_128 --model_dir ./model_files/mgp_str_base_patch4_3_32_128-Seed226_aug-Seed226/iter_145000.pth --batch_size 100
+python test_final.py --eval_data ./data/va/random_val_lmdb --Transformer mgp-str  --data_filtering_off --rgb --TransformerModel=mgp_str_base_patch4_3_32_128 --model_dir ./model_files/mgp_str_base_patch4_3_32_128-Seed226_aug-Seed226/iter_370000.pth --batch_size 100 --PAD 

@@ -188,8 +188,10 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                 char_pred_max_prob = char_preds_max_prob[index]
                 char_pred_EOS = char_pred.find('[s]')
                 char_pred = char_pred[:char_pred_EOS]  # prune after "end of sentence" token ([s])
-                print(f'char_pred = {char_pred}, gt = {gt}, Correct: {char_pred == gt}')
+                # print(f'char_pred = {char_pred}, gt = {gt}, Correct: {char_pred == gt}')
                 valid_log.write(f' GT: {gt}, Pred: {char_pred}, Correct: {char_pred == gt}\n')
+                with open('predictions.txt', 'w', encoding='utf-8') as f:
+                    f.write(f'{char_pred}\n')
                 if char_pred == gt:
                     char_n_correct += 1
                 char_pred_max_prob = char_pred_max_prob[:char_pred_EOS+1]
@@ -277,7 +279,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                 char_pred_max_prob = char_preds_max_prob[index]
                 char_pred_EOS = char_pred.find('[s]')
                 char_pred = char_pred[:char_pred_EOS]  # prune after "end of sentence" token ([s])
-                
+                    
                 if char_pred == gt:
                     char_n_correct += 1
                 char_pred_max_prob = char_pred_max_prob[:char_pred_EOS+1]
@@ -369,8 +371,8 @@ def test(opt):
     # print(model)
 
     """ keep evaluation model and result logs """
-    os.makedirs(f'./result/{opt.exp_name}', exist_ok=True)
-    os.system(f'cp {opt.saved_model} ./result/{opt.exp_name}/')
+    # os.makedirs(f'./result/{opt.exp_name}', exist_ok=True)
+    # os.system(f'cp {opt.saved_model} ./result/{opt.exp_name}/')
 
     """ setup loss """
     criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
@@ -382,7 +384,7 @@ def test(opt):
         if opt.benchmark_all_eval:  # evaluation with 10 benchmark evaluation datasets
             return benchmark_all_eval(model, criterion, converter, opt)
         else:
-            log = open(f'./result/{opt.exp_name}/log_evaluation.txt', 'a')
+            # log = open(f'./result/{opt.exp_name}/log_evaluation.txt', 'a')
             AlignCollate_evaluation = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, opt=opt)
             eval_data, eval_data_log = hierarchical_dataset(root=opt.eval_data, opt=opt)
             evaluation_loader = torch.utils.data.DataLoader(
@@ -390,27 +392,13 @@ def test(opt):
                 shuffle=False,
                 num_workers=int(opt.workers),
                 collate_fn=AlignCollate_evaluation, pin_memory=True)
-            
-            _, accuracy_list, preds_str, _, labels, _, _, _ = validation(
+            _, accuracy_by_best_model, _, _, _, _, _, _ = validation(
                 model, criterion, evaluation_loader, converter, opt)
-            log.write(eval_data_log)
-            from datetime import datetime
-            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            log.write(f'\ncurrent_time: {current_time}\n')
-            print(f'accuracy: {accuracy_list[0] : 0.3f}')
-            dashed_line = '-' * 80
-            head = f'{"Ground Truth":25s} | {"Prediction":25s} |  T/F'
-            predicted_result_log = f'{dashed_line}\n{head}\n{dashed_line}\n'
-            for i, (label, pred) in enumerate(zip(labels, preds_str)):
-                if i % (len(labels) // 10) == 0:
-                    # label = label[:label.find('[s]')]
-                    pred = pred[:pred.find('[s]')]
-                    predicted_result_log += f'{label:25s} | {pred:25s} | \t{str(pred == label)}\n'
-            predicted_result_log += f'{dashed_line}'
-            log.write(f'accuracy: {accuracy_list[0] : 0.3f}\n')
-            print(predicted_result_log)
-            log.write(predicted_result_log + '\n')
-            log.close()
+            # log.write(eval_data_log)
+            print(f'{accuracy_by_best_model[0]:0.3f}')
+            # log.write(f'{accuracy_by_best_model[0]:0.3f}\n')
+            # log.close()
+
 
 # https://github.com/clovaai/deep-text-recognition-benchmark/issues/125
 def get_flops(model, opt, converter):
@@ -440,7 +428,7 @@ if __name__ == '__main__':
     import pickle
     with open('korean_dict.pkl', 'rb') as f:
         extended_char = pickle.load(f)
-        extended_char.append(' ')
+        extended_char.extend([' ', '(', ')'])
     opt.character = ''.join(extended_char)
 
     cudnn.benchmark = True
