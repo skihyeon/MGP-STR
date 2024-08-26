@@ -123,7 +123,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
     length_of_data = 0
     infer_time = 0
     valid_loss_avg = Averager()
-    valid_log = open(f'./result/valid.log', 'a')
+    valid_log = open(f'./result/valid.log', 'w')
     valid_log.write("*" * 100 + "\n")
     valid_log.write(datetime.now().strftime('%Y-%m-%d %H:%M:%S') + "\n")
     valid_log.write("*" * 100 + "\n")
@@ -267,7 +267,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                 
             infer_time += forward_time
             valid_loss_avg.add(cost)
-
+            
             # calculate accuracy & confidence score
             confidence_score_list = []
             for index,gt in enumerate(labels):
@@ -279,8 +279,11 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                 char_pred_max_prob = char_preds_max_prob[index]
                 char_pred_EOS = char_pred.find('[s]')
                 char_pred = char_pred[:char_pred_EOS]  # prune after "end of sentence" token ([s])
-                    
-                if char_pred == gt:
+                valid_log.write(f' GT: {gt}, Pred: {char_pred}, Correct: {char_pred == gt}\n')
+                # with open('predictions.txt', 'a', encoding='utf-8') as f:
+                    # f.write(f'{char_pred}\n')
+
+                if char_pred.strip() == gt:
                     char_n_correct += 1
                 char_pred_max_prob = char_pred_max_prob[:char_pred_EOS+1]
                 try:
@@ -426,9 +429,11 @@ if __name__ == '__main__':
     if opt.sensitive:
         opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
     import pickle
-    with open('korean_dict.pkl', 'rb') as f:
-        extended_char = pickle.load(f)
-        extended_char.extend([' ', '(', ')'])
+    if 'pkl' in opt.character:
+        with open(opt.character, 'rb') as f:
+            extended_char = pickle.load(f)
+        extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'])
+        opt.character = ''.join(extended_char)
     opt.character = ''.join(extended_char)
 
     cudnn.benchmark = True

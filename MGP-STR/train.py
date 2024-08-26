@@ -27,6 +27,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 import torch.nn.functional as F
 from tqdm.auto import tqdm
 
+import wandb
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -75,8 +77,8 @@ def train(opt):
     model.train()
     
     # if opt.saved_model != '':
-    #     print(f'loading pretrained model from {opt.saved_model}')
-    #     model.load_state_dict(torch.load(opt.saved_model, map_location='cpu'), strict=False)
+        # print(f'loading pretrained model from {opt.saved_model}')
+        # model.load_state_dict(torch.load(opt.saved_model, map_location='cpu'), strict=False)
     
     if opt.saved_model != '':
         print(f'loading pretrained model from {opt.saved_model}')
@@ -90,11 +92,15 @@ def train(opt):
             if name in new_state_dict:
                 if new_state_dict[name].shape != param.shape:
                     print(f"Skipping parameter {name} due to shape mismatch")
-                    new_state_dict[name][:param.shape[0]] = param
-                    if len(new_state_dict[name].shape) > 1:
-                        nn.init.normal_(new_state_dict[name][param.shape[0]:])
-                    else:
-                        nn.init.zeros_(new_state_dict[name][param.shape[0]:])
+                    # 기존 가중치 복사 및 새 가중치 초기화
+                    if len(new_state_dict[name].shape) == len(param.shape):
+                        min_shape = [min(new_dim, old_dim) for new_dim, old_dim in zip(new_state_dict[name].shape, param.shape)]
+                        slices = tuple(slice(0, dim) for dim in min_shape)
+                        new_state_dict[name][slices] = param[slices]
+                        if len(new_state_dict[name].shape) > 1:
+                            nn.init.normal_(new_state_dict[name][min_shape[0]:])
+                        else:
+                            nn.init.zeros_(new_state_dict[name][min_shape[0]:])
                 else:
                     new_state_dict[name] = param
         
@@ -167,7 +173,7 @@ def train(opt):
         ##
         valid_indices = [i for i, label in enumerate(labels) if len(label) <= opt.batch_max_length]
         if len(valid_indices) == 0:
-            print("모든 라벨이 batch_max_length를 초과하여 이번 배치를 건너뜁니다.")
+            # print("모든 라벨이 batch_max_length를 초과하여 이번 배치를 건너뜁니다.")
             continue
         image_tensors = image_tensors[valid_indices]
         labels = [labels[i] for i in valid_indices]
@@ -201,6 +207,13 @@ def train(opt):
         loss_avg.add(cost)
         pbar.set_postfix({"Train Loss": f"{loss_avg.val():0.5f}"})
         # pbar.update(1)
+        if utils.is_main_process():
+        # wandb logging
+            wandb.log({
+                "iteration": iteration,
+                "train_loss": loss_avg.val(),
+                "learning_rate": scheduler.get_last_lr()[0] if scheduler else opt.lr
+                })
 
         # validation part
         # if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0'  
@@ -235,6 +248,17 @@ def train(opt):
                 loss_model_log = f'{loss_log}\n{current_model_log}\n{best_model_log}'
                 print(loss_model_log)
                 log.write(loss_model_log + '\n')
+
+                # wandb logging for validation
+                wandb.log({
+                    "iteration": iteration,
+                    "valid_loss": valid_loss,
+                    "char_accuracy": char_accuracy,
+                    "bpe_accuracy": bpe_accuracy,
+                    "wp_accuracy": wp_accuracy,
+                    "final_accuracy": final_accuracy,
+                    "best_accuracy": best_accuracy
+                })
 
                 # show some predicted results
                 dashed_line = '-' * 80
@@ -279,7 +303,15 @@ def train(opt):
 
     pbar.close()
 
-
+def init_wandb(cfg):
+    wandb.login(key=os.environ.get("WANDB_API_KEY"))
+    wandb.init(
+        project="MGP",
+        name=cfg.exp_name,
+        config=vars(cfg),
+        entity = os.environ.get("WANDB_ENTITY"),
+        resume=True
+    )
 
 if __name__ == '__main__':
 
@@ -287,9 +319,8 @@ if __name__ == '__main__':
     if 'pkl' in opt.character:
         with open(opt.character, 'rb') as f:
             extended_char = pickle.load(f)
-        extended_char.append(' ')
-        extended_char.append('(')
-        extended_char.append(')')
+        ## '金','整','公','簿' 추후 추가
+        extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'])
         opt.character = ''.join(extended_char)
 
 
@@ -324,4 +355,5 @@ if __name__ == '__main__':
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
     
+    init_wandb(opt)
     train(opt)

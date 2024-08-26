@@ -9,3 +9,5 @@
 *.jpg
 *.log
 *.db
+/MGP-STR/wandb
+*.sh

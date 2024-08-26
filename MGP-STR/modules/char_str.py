@@ -150,7 +150,7 @@ def _conv_filter(state_dict):
 
 @register_model
 def char_str_base_patch4_3_32_128(pretrained=False, **kwargs):
-    kwargs['in_chans'] = 3
+    kwargs['in_chans'] = 1
     model = CHARSTR(
         img_size=(32,128), patch_size=4, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True, **kwargs)
     model.default_cfg = _cfg(

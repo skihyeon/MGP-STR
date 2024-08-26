@@ -288,7 +288,7 @@ class DataAugment(object):
 
             self.noise = [GaussianNoise(), ShotNoise(), ImpulseNoise(), SpeckleNoise()]
             self.blur = [GaussianBlur(), DefocusBlur(), MotionBlur(), GlassBlur(), ZoomBlur()]
-            self.weather = [Fog(), Snow(), Frost(), Rain(), Shadow()]
+            # self.weather = [Fog(), Snow(), Frost(), Rain(), Shadow()]
 
             self.noises = [self.blur, self.noise, self.weather]
             self.processes = [self.camera, self.process]
@@ -299,7 +299,8 @@ class DataAugment(object):
             self.isbaseline_aug = False
             # rand augment
             if self.opt.isrand_aug:
-                self.augs = [self.process, self.camera, self.noise, self.blur, self.weather, self.pattern, self.warp, self.geometry]
+                # self.augs = [self.process, self.camera, self.noise, self.blur, self.weather, self.pattern, self.warp, self.geometry]
+                self.augs = [self.process, self.camera, self.noise, self.blur, self.pattern, self.warp, self.geometry]
             # semantic augment
             elif self.opt.issemantic_aug:
                 self.geometry = [Rotate(), Perspective(), Shrink()]
@@ -711,7 +712,8 @@ class DataAugment(object):
             self.isbaseline_aug = False
             # rand augment
             if self.opt.isrand_aug:
-                self.augs = [self.process, self.camera, self.noise, self.blur, self.weather, self.pattern, self.warp, self.geometry]
+                # self.augs = [self.process, self.camera, self.noise, self.blur, self.weather, self.pattern, self.warp, self.geometry]
+                self.augs = [self.process, self.camera, self.noise, self.blur, self.pattern, self.warp, self.geometry]
             # semantic augment
             elif self.opt.issemantic_aug:
                 self.geometry = [Rotate(), Perspective(), Shrink()]

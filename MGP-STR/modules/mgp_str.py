@@ -179,7 +179,7 @@ def mgp_str_large_patch4_3_32_128(pretrained=False, **kwargs) -> VisionTransform
     """
     # model_args = dict(patch_size=16, embed_dim=1024, depth=24, num_heads=16)
     # model = _create_vision_transformer('vit_large_patch16_224', pretrained=pretrained, **dict(model_args, **kwargs))
-    kwargs['in_chans'] = 3
+    kwargs['in_chans'] = 1
     model = MGPSTR(
         img_size=(32,128), patch_size=4, embed_dim=1024, depth=24, num_heads=16, mlp_ratio=4, qkv_bias=True, **kwargs)
     model.default_cfg = _cfg(
@@ -193,7 +193,7 @@ def mgp_str_large_patch4_3_32_128(pretrained=False, **kwargs) -> VisionTransform
 
 @register_model
 def mgp_str_base_patch4_3_32_128(pretrained=False, **kwargs):
-    kwargs['in_chans'] = 3
+    kwargs['in_chans'] = 1
     model = MGPSTR(
         img_size=(32,128), patch_size=4, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True, **kwargs)
     model.default_cfg = _cfg(
