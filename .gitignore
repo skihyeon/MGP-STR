@@ -2,8 +2,6 @@
 *.pth
 *.mdb
 *.txt
-*.pkl
-*.pickle
 *.zip
 *.png
 *.jpg
