@@ -155,7 +155,9 @@ def train(opt):
             print(f'continue to train, start_iter: {start_iter}')
         except:
             pass
-
+    
+    if opt.wandb:
+        wandb.watch(model, criterion, log="all", log_freq=10)
     start_time = time.time()
     best_accuracy = -1
     iteration = start_iter
@@ -183,9 +185,9 @@ def train(opt):
             len_target, char_target = converter.char_encode(labels) 
             bpe_target = converter.bpe_encode(labels)
             wp_target = converter.wp_encode(labels)
-            
             char_preds, bpe_preds, wp_preds = model(image)
-            
+            if wp_preds.shape[-1] != converter.wp_tokenizer.vocab_size:
+                raise ValueError(f"wp_preds last dimension {wp_preds.shape[-1]} does not match vocab size {converter.wp_tokenizer.vocab_size}")
             char_loss = criterion(char_preds.view(-1, char_preds.shape[-1]), char_target.contiguous().view(-1))
             bpe_pred_cost = criterion(bpe_preds.view(-1, bpe_preds.shape[-1]), bpe_target.contiguous().view(-1)) 
             wp_pred_cost = criterion(wp_preds.view(-1, wp_preds.shape[-1]), wp_target.contiguous().view(-1)) 
@@ -207,7 +209,7 @@ def train(opt):
         loss_avg.add(cost)
         pbar.set_postfix({"Train Loss": f"{loss_avg.val():0.5f}"})
         # pbar.update(1)
-        if utils.is_main_process():
+        if utils.is_main_process() and opt.wandb:
         # wandb logging
             wandb.log({
                 "iteration": iteration,
@@ -250,15 +252,16 @@ def train(opt):
                 log.write(loss_model_log + '\n')
 
                 # wandb logging for validation
-                wandb.log({
-                    "iteration": iteration,
-                    "valid_loss": valid_loss,
-                    "char_accuracy": char_accuracy,
-                    "bpe_accuracy": bpe_accuracy,
-                    "wp_accuracy": wp_accuracy,
-                    "final_accuracy": final_accuracy,
-                    "best_accuracy": best_accuracy
-                })
+                if opt.wandb:
+                    wandb.log({
+                        "iteration": iteration,
+                        "valid_loss": valid_loss,
+                        "char_accuracy": char_accuracy,
+                        "bpe_accuracy": bpe_accuracy,
+                        "wp_accuracy": wp_accuracy,
+                        "final_accuracy": final_accuracy,
+                        "best_accuracy": best_accuracy
+                    })
 
                 # show some predicted results
                 dashed_line = '-' * 80
@@ -272,13 +275,13 @@ def train(opt):
                         pred = pred[:pred.find('[s]')]
 
                     # To evaluate 'case sensitive model' with alphanumeric and case insensitve setting.
-                    if opt.sensitive and opt.data_filtering_off:
-                        pred = pred.lower()
-                        gt = gt.lower()
-                        alphanumeric_case_insensitve = '0123456789abcdefghijklmnopqrstuvwxyz'
-                        out_of_alphanumeric_case_insensitve = f'[^{alphanumeric_case_insensitve}]'
-                        pred = re.sub(out_of_alphanumeric_case_insensitve, '', pred)
-                        gt = re.sub(out_of_alphanumeric_case_insensitve, '', gt)
+                    # if opt.sensitive and opt.data_filtering_off:
+                        # pred = pred.lower()
+                        # gt = gt.lower()
+                        # alphanumeric_case_insensitve = '0123456789abcdefghijklmnopqrstuvwxyz'
+                        # out_of_alphanumeric_case_insensitve = f'[^{alphanumeric_case_insensitve}]'
+                        # pred = re.sub(out_of_alphanumeric_case_insensitve, '', pred)
+                        # gt = re.sub(out_of_alphanumeric_case_insensitve, '', gt)
 
                     predicted_result_log += f'{gt:25s} | {pred:25s} | {confidence:0.4f}\t{str(pred == gt)}\n'
                 predicted_result_log += f'{dashed_line}'
@@ -301,8 +304,6 @@ def train(opt):
             pbar.close()
             sys.exit()
 
-    pbar.close()
-
 def init_wandb(cfg):
     wandb.login(key=os.environ.get("WANDB_API_KEY"))
     wandb.init(
@@ -310,7 +311,8 @@ def init_wandb(cfg):
         name=cfg.exp_name,
         config=vars(cfg),
         entity = os.environ.get("WANDB_ENTITY"),
-        resume=True
+        save_code= True,
+        resume = True
     )
 
 if __name__ == '__main__':
@@ -332,8 +334,8 @@ if __name__ == '__main__':
     os.makedirs(f'{opt.saved_path}/{opt.exp_name}', exist_ok=True)
 
     """ vocab / character number configuration """
-    if opt.sensitive:
-        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+    # if opt.sensitive:
+        # opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
     
     utils.init_distributed_mode(opt)
 
@@ -355,5 +357,6 @@ if __name__ == '__main__':
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
     
-    init_wandb(opt)
+    if utils.is_main_process() and opt.wandb:
+        init_wandb(opt)
     train(opt)

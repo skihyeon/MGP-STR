@@ -1,8 +1,7 @@
 import torch
 import numpy as np
 import argparse
-from transformers import BertTokenizer, GPT2Tokenizer
-from strsimpy.normalized_levenshtein import NormalizedLevenshtein
+from transformers import BertTokenizerFast, BertTokenizer, GPT2Tokenizer, PreTrainedTokenizerFast
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -20,9 +19,10 @@ class TokenLabelConverter(object):
 
         self.dict = {word: i for i, word in enumerate(self.character)}
         self.batch_max_length = opt.batch_max_length + len(self.list_token)
-        self.bpe_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        self.wp_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-        self.normalized_levenshtein = NormalizedLevenshtein()
+        # self.bpe_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        self.bpe_tokenizer = PreTrainedTokenizerFast.from_pretrained("skt/kogpt2-base-v2")
+        # self.wp_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        self.wp_tokenizer = BertTokenizerFast.from_pretrained("kykim/bert-kor-base")
 
     def encode(self, text):
         """ convert text-label into text-index.
@@ -57,14 +57,25 @@ class TokenLabelConverter(object):
             texts.append(text)
         return texts
     
+    # def bpe_encode(self, text):
+    #     batch_text = torch.LongTensor(len(text), self.batch_max_length).fill_(self.dict[self.GO])
+    #     for i, t in enumerate(text):
+    #         # token = self.bpe_tokenizer(t,max_length=self.batch_max_length-2, truncation=True)['input_ids']
+    #         token = self.bpe_tokenizer(t)['input_ids']
+    #         txt = [1] + token + [2]
+    #         batch_text[i][:len(txt)] = torch.LongTensor(txt)
+            
+    #     return batch_text.to(device)
+    
     def bpe_encode(self, text):
         batch_text = torch.LongTensor(len(text), self.batch_max_length).fill_(self.dict[self.GO])
         for i, t in enumerate(text):
-            token = self.bpe_tokenizer(t)['input_ids']
-            txt = [1] + token + [2]
+            # KoGPT-2 토크나이저를 사용하여 토큰화
+            token = self.bpe_tokenizer.encode(t)
+            txt = [self.dict[self.GO]] + token + [self.dict[self.SPACE]]
             batch_text[i][:len(txt)] = torch.LongTensor(txt)
-            
         return batch_text.to(device)
+    
     
     def bpe_decode(self, text_index, length):
         """ convert text-index into text-label. """
@@ -230,5 +241,8 @@ def get_args(is_train=True):
     parser.add_argument('--model_dir', default='') 
     parser.add_argument('--demo_imgs', default='')
     
+
+    parser.add_argument('--wandb', action='store_true')
+
     args = parser.parse_args()
     return args

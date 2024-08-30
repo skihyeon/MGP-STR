@@ -57,8 +57,10 @@ class MGPSTR(VisionTransformer):
     def reset_classifier(self, num_classes):
         self.num_classes = num_classes
         self.char_head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
-        self.bpe_head = nn.Linear(self.embed_dim, 50257) if num_classes > 0 else nn.Identity()
-        self.wp_head = nn.Linear(self.embed_dim, 30522) if num_classes > 0 else nn.Identity()
+        # self.bpe_head = nn.Linear(self.embed_dim, 50257) if num_classes > 0 else nn.Identity()
+        self.bpe_head = nn.Linear(self.embed_dim, 51200) if num_classes > 0 else nn.Identity()
+        # self.wp_head = nn.Linear(self.embed_dim, 30522) if num_classes > 0 else nn.Identity()
+        self.wp_head = nn.Linear(self.embed_dim, 42000) if num_classes > 0 else nn.Identity()
         
 
     def forward_features(self, x):

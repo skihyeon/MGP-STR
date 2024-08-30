@@ -9,3 +9,4 @@
 *.db
 /MGP-STR/wandb
 *.sh
+/MGP-STR/train.sh
