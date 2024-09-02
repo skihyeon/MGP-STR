@@ -113,6 +113,9 @@ def train(opt):
         
     # loss averager
     loss_avg = Averager()
+    char_loss_avg = Averager()
+    bpe_loss_avg = Averager()
+    wp_loss_avg = Averager()
 
     # filter that only require gradient decent
     filtered_parameters = []
@@ -156,7 +159,7 @@ def train(opt):
         except:
             pass
     
-    if opt.wandb:
+    if utils.is_main_process() and opt.wandb:
         wandb.watch(model, criterion, log="all", log_freq=10)
     start_time = time.time()
     best_accuracy = -1
@@ -186,12 +189,27 @@ def train(opt):
             bpe_target = converter.bpe_encode(labels)
             wp_target = converter.wp_encode(labels)
             char_preds, bpe_preds, wp_preds = model(image)
-            if wp_preds.shape[-1] != converter.wp_tokenizer.vocab_size:
-                raise ValueError(f"wp_preds last dimension {wp_preds.shape[-1]} does not match vocab size {converter.wp_tokenizer.vocab_size}")
             char_loss = criterion(char_preds.view(-1, char_preds.shape[-1]), char_target.contiguous().view(-1))
             bpe_pred_cost = criterion(bpe_preds.view(-1, bpe_preds.shape[-1]), bpe_target.contiguous().view(-1)) 
             wp_pred_cost = criterion(wp_preds.view(-1, wp_preds.shape[-1]), wp_target.contiguous().view(-1)) 
-            cost = char_loss + bpe_pred_cost + wp_pred_cost 
+            cost = char_loss + bpe_pred_cost + wp_pred_cost
+
+            # length_for_pred = torch.IntTensor([converter.batch_max_length - 1]).to(device)
+            # _, char_pred_index = char_preds.topk(1, dim=-1, largest=True, sorted=True)
+            # char_pred_index = char_pred_index.view(-1, converter.batch_max_length)
+            # print(f"Char Target: {converter.char_decode(char_target, len_target)}, Char Output: {converter.char_decode(char_pred_index[:, 1:], length_for_pred)}")
+            # _, bpe_preds_index = bpe_preds.topk(1, dim=-1, largest=True, sorted=True)
+            # bpe_preds_index = bpe_preds_index.view(-1, converter.batch_max_length)
+            # print(f"BPE Target: {converter.bpe_decode(bpe_target, len_target)}, BPE Output: {converter.bpe_decode(bpe_preds_index[:, 1:], length_for_pred)}")
+            # _, wp_pred_index = wp_preds.topk(1, dim=-1, largest=True, sorted=True)
+            # wp_pred_index = wp_pred_index.view(-1, converter.batch_max_length)
+            # print(f"WP Target: {converter.wp_decode(wp_target, len_target)}, WP Output: {converter.wp_decode(wp_pred_index[:, 1:], length_for_pred)}")
+            # print(f"Char Loss: {char_loss.item()}, BPE Loss: {bpe_pred_cost.item()}, WP Loss: {wp_pred_cost.item()}")
+
+
+            
+
+            
 
         elif (opt.Transformer in ["char-str"]):
             len_target, char_target = converter.char_encode(labels)
@@ -207,15 +225,31 @@ def train(opt):
         optimizer.step()
 
         loss_avg.add(cost)
+        char_loss_avg.add(char_loss)
+        if bpe_pred_cost:
+            bpe_loss_avg.add(bpe_pred_cost)
+        if wp_pred_cost:
+            wp_loss_avg.add(wp_pred_cost)
+
         pbar.set_postfix({"Train Loss": f"{loss_avg.val():0.5f}"})
         # pbar.update(1)
         if utils.is_main_process() and opt.wandb:
         # wandb logging
-            wandb.log({
-                "iteration": iteration,
-                "train_loss": loss_avg.val(),
-                "learning_rate": scheduler.get_last_lr()[0] if scheduler else opt.lr
-                })
+            if opt.Transformer in ["mgp-str"]:
+                wandb.log({
+                    "iteration": iteration,
+                    "train_loss": loss_avg.val(),
+                    "learning_rate": scheduler.get_last_lr()[0] if scheduler else opt.lr,
+                    "char_loss": char_loss_avg.val(),
+                    "bpe_loss": bpe_loss_avg.val(),
+                    "wp_loss": wp_loss_avg.val()
+                    })
+            else:
+                wandb.log({
+                    "iteration": iteration,
+                    "train_loss": loss_avg.val(),
+                    "learning_rate": scheduler.get_last_lr()[0] if scheduler else opt.lr,
+                    })
 
         # validation part
         # if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0'  
@@ -253,15 +287,24 @@ def train(opt):
 
                 # wandb logging for validation
                 if opt.wandb:
-                    wandb.log({
-                        "iteration": iteration,
-                        "valid_loss": valid_loss,
-                        "char_accuracy": char_accuracy,
-                        "bpe_accuracy": bpe_accuracy,
-                        "wp_accuracy": wp_accuracy,
-                        "final_accuracy": final_accuracy,
-                        "best_accuracy": best_accuracy
-                    })
+                    if opt.transformer in ["mgp-str"]:
+                        wandb.log({
+                            "iteration": iteration,
+                            "valid_loss": valid_loss,
+                            "char_accuracy": char_accuracy,
+                            "bpe_accuracy": bpe_accuracy,
+                            "wp_accuracy": wp_accuracy,
+                            "final_accuracy": final_accuracy,
+                            "best_accuracy": best_accuracy
+                        })
+                    elif opt.transformer in ["char-str"]:
+                        wandb.log({
+                            "iteration": iteration,
+                            "valid_loss": valid_loss,
+                            "char_accuracy": char_accuracy,
+                            "final_accuracy": final_accuracy,
+                            "best_accuracy": best_accuracy
+                        })
 
                 # show some predicted results
                 dashed_line = '-' * 80
@@ -312,7 +355,7 @@ def init_wandb(cfg):
         config=vars(cfg),
         entity = os.environ.get("WANDB_ENTITY"),
         save_code= True,
-        resume = True
+        # resume=True,
     )
 
 if __name__ == '__main__':

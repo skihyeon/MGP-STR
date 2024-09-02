@@ -57,24 +57,24 @@ class TokenLabelConverter(object):
             texts.append(text)
         return texts
     
-    # def bpe_encode(self, text):
-    #     batch_text = torch.LongTensor(len(text), self.batch_max_length).fill_(self.dict[self.GO])
-    #     for i, t in enumerate(text):
-    #         # token = self.bpe_tokenizer(t,max_length=self.batch_max_length-2, truncation=True)['input_ids']
-    #         token = self.bpe_tokenizer(t)['input_ids']
-    #         txt = [1] + token + [2]
-    #         batch_text[i][:len(txt)] = torch.LongTensor(txt)
-            
-    #     return batch_text.to(device)
-    
     def bpe_encode(self, text):
         batch_text = torch.LongTensor(len(text), self.batch_max_length).fill_(self.dict[self.GO])
         for i, t in enumerate(text):
-            # KoGPT-2 토크나이저를 사용하여 토큰화
-            token = self.bpe_tokenizer.encode(t)
-            txt = [self.dict[self.GO]] + token + [self.dict[self.SPACE]]
+            # token = self.bpe_tokenizer(t,max_length=self.batch_max_length-2, truncation=True)['input_ids']
+            token = self.bpe_tokenizer(t)['input_ids']
+            txt = [1] + token + [2]
             batch_text[i][:len(txt)] = torch.LongTensor(txt)
+            
         return batch_text.to(device)
+    
+    # def bpe_encode(self, text):
+    #     batch_text = torch.LongTensor(len(text), self.batch_max_length).fill_(self.dict[self.GO])
+    #     for i, t in enumerate(text):
+    #         # KoGPT-2 토크나이저를 사용하여 토큰화
+    #         token = self.bpe_tokenizer.encode(t)
+    #         txt = [self.dict[self.GO]] + token + [self.dict[self.SPACE]]
+    #         batch_text[i][:len(txt)] = torch.LongTensor(txt)
+    #     return batch_text.to(device)
     
     
     def bpe_decode(self, text_index, length):

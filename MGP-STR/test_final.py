@@ -189,9 +189,6 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                 char_pred_EOS = char_pred.find('[s]')
                 char_pred = char_pred[:char_pred_EOS]  # prune after "end of sentence" token ([s])
                 # print(f'char_pred = {char_pred}, gt = {gt}, Correct: {char_pred == gt}')
-                valid_log.write(f' GT: {gt}, Pred: {char_pred}, Correct: {char_pred == gt}\n')
-                with open('predictions.txt', 'w', encoding='utf-8') as f:
-                    f.write(f'{char_pred}\n')
                 if char_pred == gt:
                     char_n_correct += 1
                 char_pred_max_prob = char_pred_max_prob[:char_pred_EOS+1]
@@ -206,7 +203,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                 # bpe
                 bpe_pred = bpe_preds_str[index]
                 bpe_pred_max_prob = bpe_preds_max_prob[index]
-                bpe_pred_EOS = bpe_pred.find('#')
+                bpe_pred_EOS = bpe_pred.find('</s>')
                 bpe_pred = bpe_pred[:bpe_pred_EOS]
                 if bpe_pred == gt:
                         bpe_n_correct += 1
@@ -247,6 +244,10 @@ def validation(model, criterion, evaluation_loader, converter, opt):
 
                 if out_pred == gt:
                     out_n_correct += 1
+
+                valid_log.write(f' GT: {gt}, Pred: {char_pred}, Correct: {char_pred == gt}, BPE: {bpe_pred}, WP: {wp_pred}\n')
+                with open('predictions.txt', 'w', encoding='utf-8') as f:
+                    f.write(f'{char_pred}\n')
                 
                 confidence_score_list.append(char_confidence_score)
                 
@@ -395,12 +396,33 @@ def test(opt):
                 shuffle=False,
                 num_workers=int(opt.workers),
                 collate_fn=AlignCollate_evaluation, pin_memory=True)
-            _, accuracy_by_best_model, _, _, _, _, _, _ = validation(
-                model, criterion, evaluation_loader, converter, opt)
-            # log.write(eval_data_log)
-            print(f'{accuracy_by_best_model[0]:0.3f}')
-            # log.write(f'{accuracy_by_best_model[0]:0.3f}\n')
-            # log.close()
+            
+            char_list_accuracy = []
+            bpe_list_accuracy = []
+            wp_list_accuracy = []
+            fused_list_accuracy = []
+            total_forward_time = 0
+            total_evaluation_data_number = 0
+            char_total_correct_number = 0
+            bpe_total_correct_number = 0
+            wp_total_correct_number = 0
+            fused_total_correct_number = 0
+
+            _, accuracys, _, _, _, infer_time, length_of_data, accur_numbers = validation(
+            model, criterion, evaluation_loader, converter, opt)
+            char_list_accuracy.append(f'{accuracys[0]:0.3f}')
+            bpe_list_accuracy.append(f'{accuracys[1]:0.3f}')
+            wp_list_accuracy.append(f'{accuracys[2]:0.3f}')
+            fused_list_accuracy.append(f'{accuracys[3]:0.3f}')
+
+            total_forward_time += infer_time
+            total_evaluation_data_number += len(eval_data)
+            char_total_correct_number += accur_numbers[0]
+            bpe_total_correct_number += accur_numbers[1]
+            wp_total_correct_number += accur_numbers[2]
+            fused_total_correct_number += accur_numbers[3]
+            #log.write(eval_data_log)
+            print(f'char_Acc {accuracys[0]:0.3f}\t bpe_Acc {accuracys[1]:0.3f}\t wp_Acc {accuracys[2]:0.3f}\t  fused_Acc {accuracys[3]:0.3f}')
 
 
 # https://github.com/clovaai/deep-text-recognition-benchmark/issues/125
@@ -434,7 +456,6 @@ if __name__ == '__main__':
             extended_char = pickle.load(f)
         extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'])
         opt.character = ''.join(extended_char)
-    opt.character = ''.join(extended_char)
 
     cudnn.benchmark = True
     cudnn.deterministic = True
