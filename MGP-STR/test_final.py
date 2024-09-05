@@ -454,7 +454,7 @@ if __name__ == '__main__':
     if 'pkl' in opt.character:
         with open(opt.character, 'rb') as f:
             extended_char = pickle.load(f)
-        extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'])
+        extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','@'])
         opt.character = ''.join(extended_char)
 
     cudnn.benchmark = True

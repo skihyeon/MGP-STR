@@ -30,7 +30,10 @@ def run_model(image_tensors, model, converter, opt):
     image = image_tensors.to(device)
     batch_size = image.shape[0]
 
-    attens, char_preds, bpe_preds, wp_preds = model(image, is_eval=True) # final
+    if opt.Transformer == 'char-str':
+        attens, char_preds = model(image, is_eval=True) # final    
+    else:
+        attens, char_preds, bpe_preds, wp_preds = model(image, is_eval=True) # final
     
     # char pred
     _, char_pred_index = char_preds.topk(1, dim=-1, largest=True, sorted=True)
@@ -41,23 +44,24 @@ def run_model(image_tensors, model, converter, opt):
     char_pred_max_prob, _ = char_pred_prob.max(dim=2)
     char_preds_max_prob = char_pred_max_prob[:, 1:]
     
-    # bpe pred
-    _, bpe_preds_index = bpe_preds.topk(1, dim=-1, largest=True, sorted=True)
-    bpe_preds_index = bpe_preds_index.view(-1, converter.batch_max_length)
-    bpe_preds_str = converter.bpe_decode(bpe_preds_index[:,1:], length_for_pred)
-    bpe_preds_prob = F.softmax(bpe_preds, dim=2)
-    bpe_preds_max_prob, _ = bpe_preds_prob.max(dim=2)
-    bpe_preds_max_prob = bpe_preds_max_prob[:, 1:]
-    bpe_preds_index = bpe_preds_index[:, 1:]
+    if opt.Transformer=='mgp-str':
+        # bpe pred
+        _, bpe_preds_index = bpe_preds.topk(1, dim=-1, largest=True, sorted=True)
+        bpe_preds_index = bpe_preds_index.view(-1, converter.batch_max_length)
+        bpe_preds_str = converter.bpe_decode(bpe_preds_index[:,1:], length_for_pred)
+        bpe_preds_prob = F.softmax(bpe_preds, dim=2)
+        bpe_preds_max_prob, _ = bpe_preds_prob.max(dim=2)
+        bpe_preds_max_prob = bpe_preds_max_prob[:, 1:]
+        bpe_preds_index = bpe_preds_index[:, 1:]
 
-    # wp pred
-    _, wp_preds_index = wp_preds.topk(1, dim=-1, largest=True, sorted=True)
-    wp_preds_index = wp_preds_index.view(-1, converter.batch_max_length)
-    wp_preds_str = converter.wp_decode(wp_preds_index[:,1:], length_for_pred)
-    wp_preds_prob = F.softmax(wp_preds, dim=2)
-    wp_preds_max_prob, _ = wp_preds_prob.max(dim=2)
-    wp_preds_max_prob = wp_preds_max_prob[:, 1:]
-    wp_preds_index = wp_preds_index[:, 1:]
+        # wp pred
+        _, wp_preds_index = wp_preds.topk(1, dim=-1, largest=True, sorted=True)
+        wp_preds_index = wp_preds_index.view(-1, converter.batch_max_length)
+        wp_preds_str = converter.wp_decode(wp_preds_index[:,1:], length_for_pred)
+        wp_preds_prob = F.softmax(wp_preds, dim=2)
+        wp_preds_max_prob, _ = wp_preds_prob.max(dim=2)
+        wp_preds_max_prob = wp_preds_max_prob[:, 1:]
+        wp_preds_index = wp_preds_index[:, 1:]
 
     # for index in range(image.shape[0]):
     index = 0
@@ -75,41 +79,42 @@ def run_model(image_tensors, model, converter, opt):
         char_confidence_score = 0.0
     print('char:', char_pred, char_confidence_score)
 
-    # bpe
-    bpe_pred = bpe_preds_str[index]
-    bpe_pred_max_prob = bpe_preds_max_prob[index]
-    bpe_pred_EOS = bpe_pred.find('#')
-    bpe_pred = bpe_pred[:bpe_pred_EOS]
+    if opt.Transformer=='mgp-str':
+        # bpe
+        bpe_pred = bpe_preds_str[index]
+        bpe_pred_max_prob = bpe_preds_max_prob[index]
+        bpe_pred_EOS = bpe_pred.find('#')
+        bpe_pred = bpe_pred[:bpe_pred_EOS]
 
-    bpe_pred_index = bpe_preds_index[index].cpu().tolist()
-    try:
-        bpe_pred_EOS_index = bpe_pred_index.index(2)
-    except:
-        bpe_pred_EOS_index = -1
-    bpe_pred_max_prob = bpe_pred_max_prob[:bpe_pred_EOS_index+1]
-    try:
-        bpe_confidence_score = bpe_pred_max_prob.cumprod(dim=0)[-1].cpu().tolist()
-    except:
-        bpe_confidence_score = 0.0
-    print('bpe:', bpe_pred, bpe_confidence_score)
+        bpe_pred_index = bpe_preds_index[index].cpu().tolist()
+        try:
+            bpe_pred_EOS_index = bpe_pred_index.index(2)
+        except:
+            bpe_pred_EOS_index = -1
+        bpe_pred_max_prob = bpe_pred_max_prob[:bpe_pred_EOS_index+1]
+        try:
+            bpe_confidence_score = bpe_pred_max_prob.cumprod(dim=0)[-1].cpu().tolist()
+        except:
+            bpe_confidence_score = 0.0
+        print('bpe:', bpe_pred, bpe_confidence_score)
 
-    # wp
-    wp_pred = wp_preds_str[index]
-    wp_pred_max_prob = wp_preds_max_prob[index]
-    wp_pred_EOS = wp_pred.find('[SEP]')
-    wp_pred = wp_pred[:wp_pred_EOS]
+        # wp
+        wp_pred = wp_preds_str[index]
+        wp_pred_max_prob = wp_preds_max_prob[index]
+        wp_pred_EOS = wp_pred.find('[SEP]')
+        wp_pred = wp_pred[:wp_pred_EOS]
 
-    wp_pred_index = wp_preds_index[index].cpu().tolist()
-    try:
-        wp_pred_EOS_index = wp_pred_index.index(102)
-    except:
-        wp_pred_EOS_index = -1
-    wp_pred_max_prob = wp_pred_max_prob[:wp_pred_EOS_index+1]
-    try:
-        wp_confidence_score = wp_pred_max_prob.cumprod(dim=0)[-1].cpu().tolist()
-    except:
-        wp_confidence_score = 0.0
-    print('wp:', wp_pred, wp_confidence_score)
+        wp_pred_index = wp_preds_index[index].cpu().tolist()
+        try:
+            wp_pred_EOS_index = wp_pred_index.index(102)
+        except:
+            wp_pred_EOS_index = -1
+        wp_pred_max_prob = wp_pred_max_prob[:wp_pred_EOS_index+1]
+        try:
+            wp_confidence_score = wp_pred_max_prob.cumprod(dim=0)[-1].cpu().tolist()
+        except:
+            wp_confidence_score = 0.0
+        print('wp:', wp_pred, wp_confidence_score)
 
     # draw atten
     pil = transforms.ToPILImage()
@@ -117,25 +122,94 @@ def run_model(image_tensors, model, converter, opt):
     size = opt.imgH , opt.imgW
     resize = transforms.Resize(size=size, interpolation=0)
     char_atten = attens[0][index]
-    bpe_atten = attens[1][index]
-    wp_atten = attens[2][index]
+    if opt.Transformer=='mgp-str':
+        bpe_atten = attens[1][index]
+        wp_atten = attens[2][index]
     char_atten = char_atten[:, 1:].view(-1, 8, 32)
     char_atten = char_atten[1:char_pred_EOS+1]
     draw_atten(opt.demo_imgs, char_pred, char_atten, pil, tensor, resize, flag='char')
 
+# class NormalizePAD(object):
+
+#     def __init__(self, max_size, PAD_type='right'):
+#         self.toTensor = transforms.ToTensor()
+#         self.max_size = max_size
+#         self.max_width_half = math.floor(max_size[2] / 2)
+#         self.PAD_type = PAD_type
+
+#     def __call__(self, img):
+#         c, h, w = img.size()
+#         Pad_img = torch.FloatTensor(*self.max_size).fill_(0)
+#         Pad_img[:, :, :w] = img  # right pad
+#         return Pad_img
+
+# def Pad(img, w=128, h=32):
+#     input_channel = 1
+#     transform = (NormalizePAD((input_channel, h, w)))
+#     i_w, i_h = img.size
+#     ratio = i_w / float(i_h)
+#     if math.ceil(32 * ratio) > 128:
+#             resized_w = 128
+#     else:
+#         resized_w = math.ceil(32 * ratio)
+
+#     resized_image = img.resize((resized_w, 32), Image.BICUBIC)
+
+#     return transform(resized_image)
+
 def load_img(img_path, opt):
-    img = Image.open(img_path).convert('RGB')
-    img = img.resize((opt.imgW, opt.imgH), Image.BICUBIC)
-    img_arr = np.array(img)
-    img_tensor = transforms.ToTensor()(img)
-    image_tensor = img_tensor.unsqueeze(0)
+    img = Image.open(img_path).convert('L')
+    # img = img.resize((opt.imgW, opt.imgH), Image.BICUBIC)
+# 
+    # img_arr = np.array(img)
+    # img_tensor = transforms.ToTensor()(img)
+
+
+    i_w, i_h = img.size
+    ratio = i_w / float(i_h)
+    
+    if math.ceil(32 * ratio) > 128:
+        resized_w = 128
+    else:
+        resized_w = math.ceil(32 * ratio)
+    
+    resized_image = img.resize((resized_w, 32), Image.BICUBIC)
+    
+    # Padding
+    input_channel = 1
+    max_size = (input_channel, 32, 128)
+    Pad_img = torch.FloatTensor(*max_size).fill_(0)
+    img_tensor = transforms.ToTensor()(resized_image)
+    Pad_img[:, :, :resized_w] = img_tensor
+
+
+    image_tensor = Pad_img.unsqueeze(0)
     return image_tensor
     
 def draw_atten(img_path, pred, attn, pil, tensor, resize, flag=''):
     image = PIL.Image.open(img_path).convert('RGB')
-    image = cv2.resize(np.array(image), (128, 32))
+    # image = cv2.resize(np.array(image), (128, 32))
     
-    image = tensor(image)
+    # image = tensor(image)
+    # image_np = np.array(pil(image))
+
+    i_w, i_h = image.size
+    ratio = i_w / float(i_h)
+    
+    if math.ceil(32 * ratio) > 128:
+        resized_w = 128
+    else:
+        resized_w = math.ceil(32 * ratio)
+    
+    resized_image = image.resize((resized_w, 32), Image.BICUBIC)
+    
+    # Padding
+    input_channel = 3
+    max_size = (input_channel, 32, 128)
+    Pad_img = torch.FloatTensor(*max_size).fill_(0)
+    img_tensor = tensor(resized_image)
+    Pad_img[:, :, :resized_w] = img_tensor
+    image = Pad_img
     image_np = np.array(pil(image))
 
     attn_pil = [pil(a) for a in attn[:, None, :, :]]
@@ -212,8 +286,15 @@ if __name__ == '__main__':
     opt = get_args(is_train=False)
 
     """ vocab / character number configuration """
-    if opt.sensitive:
-        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+    # if opt.sensitive:
+        # opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+    import pickle
+    if 'pkl' in opt.character:
+        with open(opt.character, 'rb') as f:
+            extended_char = pickle.load(f)
+        ## '金','整','公','簿' 추후 추가
+        extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','@'])
+        opt.character = ''.join(extended_char)
 
     cudnn.benchmark = True
     cudnn.deterministic = True

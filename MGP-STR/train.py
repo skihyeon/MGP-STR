@@ -159,8 +159,8 @@ def train(opt):
         except:
             pass
     
-    if utils.is_main_process() and opt.wandb:
-        wandb.watch(model, criterion, log="all", log_freq=10)
+    # if utils.is_main_process() and opt.wandb:
+        # wandb.watch(model, criterion, log="all", log_freq=10)
     start_time = time.time()
     best_accuracy = -1
     iteration = start_iter
@@ -206,10 +206,11 @@ def train(opt):
             # print(f"WP Target: {converter.wp_decode(wp_target, len_target)}, WP Output: {converter.wp_decode(wp_pred_index[:, 1:], length_for_pred)}")
             # print(f"Char Loss: {char_loss.item()}, BPE Loss: {bpe_pred_cost.item()}, WP Loss: {wp_pred_cost.item()}")
 
-
-            
-
-            
+            char_loss_avg.add(char_loss)
+            if bpe_pred_cost:
+                bpe_loss_avg.add(bpe_pred_cost)
+            if wp_pred_cost:
+                wp_loss_avg.add(wp_pred_cost)
 
         elif (opt.Transformer in ["char-str"]):
             len_target, char_target = converter.char_encode(labels)
@@ -225,11 +226,7 @@ def train(opt):
         optimizer.step()
 
         loss_avg.add(cost)
-        char_loss_avg.add(char_loss)
-        if bpe_pred_cost:
-            bpe_loss_avg.add(bpe_pred_cost)
-        if wp_pred_cost:
-            wp_loss_avg.add(wp_pred_cost)
+        
 
         pbar.set_postfix({"Train Loss": f"{loss_avg.val():0.5f}"})
         # pbar.update(1)
@@ -287,7 +284,7 @@ def train(opt):
 
                 # wandb logging for validation
                 if opt.wandb:
-                    if opt.transformer in ["mgp-str"]:
+                    if opt.Transformer in ["mgp-str"]:
                         wandb.log({
                             "iteration": iteration,
                             "valid_loss": valid_loss,
@@ -297,7 +294,7 @@ def train(opt):
                             "final_accuracy": final_accuracy,
                             "best_accuracy": best_accuracy
                         })
-                    elif opt.transformer in ["char-str"]:
+                    elif opt.Transformer in ["char-str"]:
                         wandb.log({
                             "iteration": iteration,
                             "valid_loss": valid_loss,
@@ -365,7 +362,7 @@ if __name__ == '__main__':
         with open(opt.character, 'rb') as f:
             extended_char = pickle.load(f)
         ## '金','整','公','簿' 추후 추가
-        extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'])
+        extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','@'])
         opt.character = ''.join(extended_char)
 
 
