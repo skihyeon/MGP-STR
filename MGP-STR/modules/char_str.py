@@ -25,6 +25,7 @@ _logger = logging.getLogger(__name__)
 
 __all__ = [
     'char_str_base_patch4_3_32_128',
+    'char_str_large_patch8_1_32_224'
 ]
 
 def create_char_str(batch_max_length, num_tokens, model=None, checkpoint_path=''):
@@ -43,6 +44,8 @@ def create_char_str(batch_max_length, num_tokens, model=None, checkpoint_path=''
 class CHARSTR(VisionTransformer):
 
     def __init__(self, batch_max_length, *args, **kwargs):
+        kwargs.pop('pretrained_cfg', None) 
+        kwargs.pop('pretrained_cfg_overlay', None) 
         super().__init__(*args, **kwargs)
         
         self.batch_max_length = batch_max_length
@@ -162,3 +165,16 @@ def char_str_base_patch4_3_32_128(pretrained=False, **kwargs):
             model, num_classes=model.num_classes, in_chans=kwargs.get('in_chans', 3), filter_fn=_conv_filter)
     return model
 
+@register_model
+def char_str_large_patch8_1_32_224(pretrained=False, **kwargs):
+    kwargs['in_chans'] = 1
+    model = CHARSTR(
+        img_size=(32,224), patch_size=8, embed_dim=1024, depth=24, num_heads=16, mlp_ratio=4, qkv_bias=True, **kwargs)
+    model.default_cfg = _cfg(
+            #url='https://github.com/roatienza/public/releases/download/v0.1-deit-base/deit_base_patch16_224-b5f2ef4d.pth'
+            url='https://dl.fbaipublicfiles.com/deit/deit_base_patch16_224-b5f2ef4d.pth'
+    )
+    if pretrained:
+        load_pretrained(
+            model, num_classes=model.num_classes, in_chans=kwargs.get('in_chans', 3), filter_fn=_conv_filter)
+    return model

@@ -46,6 +46,8 @@ def create_mgp_str(batch_max_length, num_tokens, model=None, checkpoint_path='')
 class MGPSTR(VisionTransformer):
 
     def __init__(self, batch_max_length, *args, **kwargs):
+        kwargs.pop('pretrained_cfg', None) 
+        kwargs.pop('pretrained_cfg_overlay', None) 
         super().__init__(*args, **kwargs)
         
         self.batch_max_length = batch_max_length

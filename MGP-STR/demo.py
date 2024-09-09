@@ -125,7 +125,10 @@ def run_model(image_tensors, model, converter, opt):
     if opt.Transformer=='mgp-str':
         bpe_atten = attens[1][index]
         wp_atten = attens[2][index]
-    char_atten = char_atten[:, 1:].view(-1, 8, 32)
+    if opt.imgW == 224:
+        char_atten = char_atten[:, 1:].view(-1, 4, 28)
+    else:
+        char_atten = char_atten[:,1:].view(-1, 8, 32)
     char_atten = char_atten[1:char_pred_EOS+1]
     draw_atten(opt.demo_imgs, char_pred, char_atten, pil, tensor, resize, flag='char')
 
@@ -163,21 +166,26 @@ def load_img(img_path, opt):
 # 
     # img_arr = np.array(img)
     # img_tensor = transforms.ToTensor()(img)
+    # img = np.array(img)
+    # # Adaptive Thresholding
+    # _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
+    # # Convert back to PIL Image
+    # img = Image.fromarray(img)
 
     i_w, i_h = img.size
     ratio = i_w / float(i_h)
     
-    if math.ceil(32 * ratio) > 128:
-        resized_w = 128
+    if math.ceil(opt.imgH * ratio) > opt.imgW:
+        resized_w = opt.imgW
     else:
-        resized_w = math.ceil(32 * ratio)
+        resized_w = math.ceil(opt.imgH * ratio)
     
-    resized_image = img.resize((resized_w, 32), Image.BICUBIC)
+    resized_image = img.resize((resized_w, opt.imgH), Image.BICUBIC)
     
     # Padding
     input_channel = 1
-    max_size = (input_channel, 32, 128)
+    max_size = (input_channel, opt.imgH, opt.imgW)
     Pad_img = torch.FloatTensor(*max_size).fill_(0)
     img_tensor = transforms.ToTensor()(resized_image)
     Pad_img[:, :, :resized_w] = img_tensor
@@ -196,16 +204,16 @@ def draw_atten(img_path, pred, attn, pil, tensor, resize, flag=''):
     i_w, i_h = image.size
     ratio = i_w / float(i_h)
     
-    if math.ceil(32 * ratio) > 128:
-        resized_w = 128
+    if math.ceil(opt.imgH * ratio) > opt.imgW:
+        resized_w = opt.imgW
     else:
-        resized_w = math.ceil(32 * ratio)
+        resized_w = math.ceil(opt.imgH * ratio)
     
-    resized_image = image.resize((resized_w, 32), Image.BICUBIC)
+    resized_image = image.resize((resized_w, opt.imgH), Image.BICUBIC)
     
     # Padding
     input_channel = 3
-    max_size = (input_channel, 32, 128)
+    max_size = (input_channel, opt.imgH, opt.imgW)
     Pad_img = torch.FloatTensor(*max_size).fill_(0)
     img_tensor = tensor(resized_image)
     Pad_img[:, :, :resized_w] = img_tensor
