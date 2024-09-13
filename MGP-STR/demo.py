@@ -29,23 +29,35 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def run_model(image_tensors, model, converter, opt):
     image = image_tensors.to(device)
     batch_size = image.shape[0]
+    length_for_pred = torch.IntTensor([opt.batch_max_length] * batch_size).to(device)
+    text_for_pred = torch.LongTensor(batch_size, opt.batch_max_length + 1).fill_(0).to(device)
+    
 
     if opt.Transformer == 'char-str':
         attens, preds = model(image, is_eval=True)
-    
+        pred_size = torch.IntTensor([preds.size(1)]*batch_size)
     # for index in range(image.shape[0]):
     index = 0
 
-    pred_size = torch.IntTensor([preds.size(1)]*batch_size)
-
+    _, t = preds.topk(1, dim=-1, largest=True, sorted=True)
+    t = t.view(-1, opt.batch_max_length+2)
+    t_s = converter.decode(t[:,0:], length_for_pred+2)
+    t_p = F.softmax(preds, dim=2)
+    t_p_max, _ = t_p.max(dim=2)
+    t_p_max = t_p_max[:,0:]
+    t_i = t[:,0:]
+    t_pred = t_s[index]
+    t_pred_max_prob = t_p_max[index]
+    t_pred_index = t_i[index].cpu().tolist()
+    print(t_pred_index)
     _, preds_index = preds.max(2)
     pred_str = converter.decode(preds_index.data, pred_size.data)
 
     preds_prob = F.softmax(preds, dim=2)
     preds_max_prob, _ = preds_prob.max(dim=2)
-    preds_max_prob = preds_max_prob[index,1:]
+    # preds_max_prob = preds_max_prob[index,1:]
     try:
-        char_confidence_score = preds_max_prob.cumprod(dim=0)[-1].cpu().item()
+        char_confidence_score = preds_max_prob.cumprod(dim=0)[-1][0].item()
     except:
         char_confidence_score = 0.0
     print('char:', pred_str[index], char_confidence_score)
@@ -56,8 +68,23 @@ def run_model(image_tensors, model, converter, opt):
     size = opt.imgH , opt.imgW
     resize = transforms.Resize(size=size, interpolation=0)
     # print(attens.shape)
-    char_atten = attens
-    # print(char_atten.shape)
+    char_atten = attens[index]
+    char_atten = char_atten[:,1:].view(-1, 8, 32) 
+    # 각 어텐션 맵의 전체 최대값을 계산 (1차원과 2차원 동시 고려)
+    char_atten_max = char_atten.view(char_atten.size(0), -1).max(dim=1)[0]
+
+    # 최대값을 기준으로 내림차순 정렬
+    _, top_indices = torch.sort(char_atten_max, descending=True)
+
+    n = len(pred_str[index]) 
+    top_n_indices = top_indices[:n]
+    top_n_indices, _ = torch.sort(top_n_indices)  # index를 순서대로 정렬
+    
+    top_n_char_atten = char_atten[top_n_indices]
+    char_atten = top_n_char_atten
+    # print(f"Top {n} char_atten: {top_n_char_atten}")
+    # char_atten = char_atten[1:len(pred_str[index])+1]
+    # print(char_atten.shape) # (batch_max_length+2, imgH/patch_size, imgW/patch_size)
     # char_atten = char_atten.unsqueeze(0)  # [257] -> [1, 257]
     # char_atten = char_atten.unsqueeze(-1)  # [1, 257] -> [1, 257, 1]
 
@@ -65,13 +92,13 @@ def run_model(image_tensors, model, converter, opt):
     # target_height = opt.imgH // 2
     # target_width = opt.imgW // 2
     # char_atten = F.interpolate(char_atten.unsqueeze(0), size=(target_height, target_width), mode='bilinear', align_corners=False).squeeze(0)
-    char_atten = (char_atten - char_atten.min()) / (char_atten.max() - char_atten.min())
+    # char_atten = (char_atten - char_atten.min()) / (char_atten.max() - char_atten.min())
     # if opt.imgW == 224:
     #     char_atten = char_atten[:, 1:].view(-1, 4, 28)
     # else:
     #     char_atten = char_atten[:,1:].view(-1, 8, 32)
     # char_atten = char_atten[1:char_pred_EOS+1]
-    draw_atten(opt.demo_imgs, pred_str, char_atten, pil, tensor, resize, flag='char')
+    draw_atten(opt.demo_imgs, pred_str[index], char_atten, pil, tensor, resize, flag='char')
 
 # class NormalizePAD(object):
 
