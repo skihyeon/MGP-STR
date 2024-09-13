@@ -3,6 +3,10 @@ export WANDB_ENTITY="hero981001"
 export TOKENIZERS_PARALLELISM="false"
 ulimit -n 65535
 
+CUDA_VISIBLE_DEVICES=2 python3 -m torch.distributed.launch --nproc_per_node=1 --nnodes=1  --master_port 29520 train.py --train_data data/train/ --valid_data data/val/banklmdb_1 --imgH 32 --imgW 128 --batch_size=50 --saved_path ./model_files --valInterval 20000 --num_iter 2000000 --lr 1 --character korean_dict_noCn.pkl --exp_name Test --batch_max_length 25 --input_channel 1 --PAD --isrand_aug --select_data banklmdb_4 --batch_ratio 1 \
+--Transformer char-str --TransformerModel=char_str_base_patch4_3_32_128 --scheduler --lr 1
+
+
 nohup env OMP_NUM_THREADS=12 CUDA_VISIBLE_DEVICES=0,1  \
 python3 -m torch.distributed.launch --nproc_per_node=2 --nnodes=1  --master_port 29511 train.py \
 --train_data data/train/ --valid_data data/val/ \
