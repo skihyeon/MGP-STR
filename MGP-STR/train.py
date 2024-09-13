@@ -218,18 +218,18 @@ def train(opt):
             with open(f'{opt.saved_path}/{opt.exp_name}/log_train.txt', 'a') as log:
                 model.eval()
                 with torch.no_grad():
-                    valid_loss, current_accuracys, char_preds, confidence_score, labels, infer_time, length_of_data, _ = validation(
+                    valid_loss, current_accuracys, char_preds, confidence_score, labels, infer_time, length_of_data, _, ned = validation(
                         model, criterion, valid_loader, converter, opt)
                     char_accuracy = current_accuracys[0]
                     bpe_accuracy = current_accuracys[1]
                     wp_accuracy = current_accuracys[2]
                     final_accuracy = current_accuracys[3]
-                    cur_best = max(char_accuracy, bpe_accuracy, wp_accuracy, final_accuracy)
+                    cur_best = max(char_accuracy, bpe_accuracy, wp_accuracy, final_accuracy, ned)
                 model.train()
 
                 loss_log = f'[{iteration+1}/{opt.num_iter}] LR: {scheduler.get_last_lr()[0]:0.5f}, Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
                 loss_avg.reset()
-                current_model_log = f'{"char_accuracy":17s}: {char_accuracy:0.3f}, {"bpe_accuracy":17s}: {bpe_accuracy:0.3f}, {"wp_accuracy":17s}: {wp_accuracy:0.3f}, {"fused_accuracy":17s}: {final_accuracy:0.3f}'
+                current_model_log = f'{"char_accuracy":17s}: {char_accuracy:0.3f}, {"NED":5s}: {ned:0.3f}'
                 
                 if cur_best > best_accuracy:
                     best_accuracy = cur_best
@@ -248,7 +248,8 @@ def train(opt):
                             "valid_loss": valid_loss,
                             "char_accuracy": char_accuracy,
                             "final_accuracy": final_accuracy,
-                            "best_accuracy": best_accuracy
+                            "best_accuracy": best_accuracy,
+                            "NED": ned
                         })
 
                 dashed_line = '-' * 80

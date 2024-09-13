@@ -23,6 +23,7 @@ from utils import Averager, TokenLabelConverter
 from dataset import hierarchical_dataset, AlignCollate, ImgDataset
 from models import Model
 from utils import get_args
+from utils import NED
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -156,6 +157,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
             preds_max_prob, _ = preds_prob.max(dim=2)
             confidence_score_list = []
             # for index,gt in enumerate(labels):
+            NEDs = []
             for gt,pred,pred_max_prob in zip(labels, preds_str,preds_max_prob):
                 valid_log.write(f' GT: {gt}, Pred: {pred}, Correct: {pred == gt}\n')
 
@@ -166,15 +168,22 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                     confidence_score = pred_max_prob.cumpord(dim=0)[-1]
                 except:
                     confidence_score = 0
+                
+                try:
+                    ned = NED(pred, gt)
+                except:
+                    ned = 0
                 confidence_score_list.append(confidence_score)
+                NEDs.append(ned)
 
     char_accuracy = char_n_correct/float(length_of_data) * 100
     bpe_accuracy = bpe_n_correct / float(length_of_data) * 100
     wp_accuracy = wp_n_correct / float(length_of_data) * 100
     out_accuracy = out_n_correct / float(length_of_data) * 100
-
+    
+    ned_avg = sum(NEDs) / len(NEDs) if NEDs else 0
     valid_log.close()
-    return valid_loss_avg.val(), [char_accuracy, 0, 0, 0], preds_str, confidence_score_list, labels, infer_time, length_of_data, [char_n_correct, bpe_n_correct, wp_n_correct, out_n_correct]
+    return valid_loss_avg.val(), [char_accuracy, 0, 0, 0], preds_str, confidence_score_list, labels, infer_time, length_of_data, [char_n_correct, bpe_n_correct, wp_n_correct, out_n_correct], ned_avg
 
 
 def draw_atten(img_path, gt, pred, attn, pil, tensor, resize, count, flag=0):

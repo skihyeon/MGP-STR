@@ -3,15 +3,11 @@ export WANDB_ENTITY="hero981001"
 export TOKENIZERS_PARALLELISM="false"
 ulimit -n 65535
 
-CUDA_VISIBLE_DEVICES=2 python3 -m torch.distributed.launch --nproc_per_node=1 --nnodes=1  --master_port 29520 train.py --train_data data/train/ --valid_data data/val/banklmdb_1 --imgH 32 --imgW 128 --batch_size=50 --saved_path ./model_files --valInterval 20000 --num_iter 2000000 --lr 1 --character korean_dict_noCn.pkl --exp_name Test --batch_max_length 25 --input_channel 1 --PAD --isrand_aug --select_data banklmdb_4 --batch_ratio 1 \
---Transformer char-str --TransformerModel=char_str_base_patch4_3_32_128 --scheduler --lr 1
-
-
-nohup env OMP_NUM_THREADS=12 CUDA_VISIBLE_DEVICES=0,1  \
+nohup env OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=0,1  \
 python3 -m torch.distributed.launch --nproc_per_node=2 --nnodes=1  --master_port 29511 train.py \
 --train_data data/train/ --valid_data data/val/ \
---Transformer char-str --TransformerModel=char_str_base_patch4_3_32_128 --imgH 32 --imgW 128 --manualSeed=456 \
---workers 12 --scheduler --batch_size=80 --saved_path ./model_files \
+--Transformer char-str --TransformerModel=char_str_custom --imgH 32 --imgW 300 --manualSeed=456 \
+--workers 4 --scheduler --batch_size=50 --saved_path ./model_files \
 --valInterval 20000 --num_iter 2000000 --lr 1 --character korean_dict_noCn.pkl \
 --exp_name char_max25_CTC --batch_max_length 25 \
 --input_channel 1 \
@@ -20,6 +16,7 @@ python3 -m torch.distributed.launch --nproc_per_node=2 --nnodes=1  --master_port
 --batch_ratio 0.03955438-0.00290933-0.002995828-0.049985727-0.01209733-0.016957522-0.03955438-0.008514905-0.013391607-0.002040893-0.002672752-0.011617932-0.009640209-0.046808112-0.010901874-0.000200845-0.009640209-0.001296084-0.016957522-0.009859125-0.000200845-0.004038002-0.002623958-0.000200845-0.020417141-0.053480176-0.009887383-0.064604581-0.005207829-0.002255702-0.015274617-0.010901874-0.011617932-0.002040893-0.050517123-0.055145994-0.003817853-0.003036079-0.003591462-0.005809377-0.000200845-0.068278023-0.009887383-0.045179752-0.013391607-0.009859125-0.016179116-0.064604581-0.053480176-0.055145994-0.01209733-0.000200845-0.002255702-0.013381832 \
 --wandb \
 > training_output.log 2>&1 &
+
 
 # nohup env OMP_NUM_THREADS=12 CUDA_VISIBLE_DEVICES=2,3  TOKENIZERS_PARALLELISM=false \
 # python3 -m torch.distributed.launch --nproc_per_node=2 --nnodes=1  --master_port 29511 train.py \
