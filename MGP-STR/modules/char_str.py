@@ -40,48 +40,40 @@ def create_char_str(batch_max_length, num_tokens, model=None, checkpoint_path=''
     char_str.reset_classifier(num_classes=num_tokens)
 
     return char_str
-
+    
 class CHARSTR(VisionTransformer):
-
-    def __init__(self, batch_max_length, *args, **kwargs):
-        kwargs.pop('pretrained_cfg', None) 
-        kwargs.pop('pretrained_cfg_overlay', None) 
+    def __init__(self, batch_max_length, num_classes, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
         self.batch_max_length = batch_max_length
         self.char_tokenLearner = TokenLearner(self.embed_dim, self.batch_max_length)
-
-    def reset_classifier(self, num_classes):
         self.num_classes = num_classes
         self.char_head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
     def forward_features(self, x):
         B = x.shape[0]
-        x = self.patch_embed(x) # x torch.Size([20, 256, 768])
+        x = self.patch_embed(x)
 
-        cls_tokens = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+        cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
         x = x + self.pos_embed
         x = self.pos_drop(x)
 
-        for i,blk in enumerate(self.blocks):
+        for blk in self.blocks:
             x = blk(x)
-            
-        attens = []
 
         char_attn, char_x = self.char_tokenLearner(x)
-        char_x = self.head(char_x)
-        char_out = char_x
-        attens = [char_attn] 
+        char_x = self.char_head(char_x)
+        char_out = F.log_softmax(char_x, dim=-1)
         
-        return attens, char_out
+        return char_attn, char_out
 
     def forward(self, x, is_eval=False):
-        attn_scores, char_out = self.forward_features(x)
+        char_attn, char_out = self.forward_features(x)
         if is_eval:
-            return [attn_scores, char_out]
+            return [char_attn, char_out]
         else:
-            return [char_out]
+            return char_out
 
 def load_pretrained(model, cfg=None, num_classes=1000, in_chans=1, filter_fn=None, strict=True):
     '''

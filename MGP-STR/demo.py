@@ -20,7 +20,7 @@ import cv2
 from torchvision import transforms
 import torchvision.utils as vutils
 
-from utils import TokenLabelConverter
+from utils import TokenLabelConverter, CTCLabelConverter
 from models import Model
 from utils import get_args
 
@@ -31,106 +31,47 @@ def run_model(image_tensors, model, converter, opt):
     batch_size = image.shape[0]
 
     if opt.Transformer == 'char-str':
-        attens, char_preds = model(image, is_eval=True) # final    
-    else:
-        attens, char_preds, bpe_preds, wp_preds = model(image, is_eval=True) # final
+        attens, preds = model(image, is_eval=True)
     
-    # char pred
-    _, char_pred_index = char_preds.topk(1, dim=-1, largest=True, sorted=True)
-    char_pred_index = char_pred_index.view(-1, converter.batch_max_length)
-    length_for_pred = torch.IntTensor([converter.batch_max_length - 1] * batch_size).to(device)
-    char_preds_str = converter.char_decode(char_pred_index[:, 1:], length_for_pred)
-    char_pred_prob = F.softmax(char_preds, dim=2)
-    char_pred_max_prob, _ = char_pred_prob.max(dim=2)
-    char_preds_max_prob = char_pred_max_prob[:, 1:]
-    
-    if opt.Transformer=='mgp-str':
-        # bpe pred
-        _, bpe_preds_index = bpe_preds.topk(1, dim=-1, largest=True, sorted=True)
-        bpe_preds_index = bpe_preds_index.view(-1, converter.batch_max_length)
-        bpe_preds_str = converter.bpe_decode(bpe_preds_index[:,1:], length_for_pred)
-        bpe_preds_prob = F.softmax(bpe_preds, dim=2)
-        bpe_preds_max_prob, _ = bpe_preds_prob.max(dim=2)
-        bpe_preds_max_prob = bpe_preds_max_prob[:, 1:]
-        bpe_preds_index = bpe_preds_index[:, 1:]
-
-        # wp pred
-        _, wp_preds_index = wp_preds.topk(1, dim=-1, largest=True, sorted=True)
-        wp_preds_index = wp_preds_index.view(-1, converter.batch_max_length)
-        wp_preds_str = converter.wp_decode(wp_preds_index[:,1:], length_for_pred)
-        wp_preds_prob = F.softmax(wp_preds, dim=2)
-        wp_preds_max_prob, _ = wp_preds_prob.max(dim=2)
-        wp_preds_max_prob = wp_preds_max_prob[:, 1:]
-        wp_preds_index = wp_preds_index[:, 1:]
-
     # for index in range(image.shape[0]):
     index = 0
 
-    # char
-    char_pred = char_preds_str[index]
-    char_pred_max_prob = char_preds_max_prob[index]
-    char_pred_EOS = char_pred.find('[s]')
-    char_pred = char_pred[:char_pred_EOS]  # prune after "end of sentence" token ([s])
+    pred_size = torch.IntTensor([preds.size(1)]*batch_size)
 
-    char_pred_max_prob = char_pred_max_prob[:char_pred_EOS+1]
+    _, preds_index = preds.max(2)
+    pred_str = converter.decode(preds_index.data, pred_size.data)
+
+    preds_prob = F.softmax(preds, dim=2)
+    preds_max_prob, _ = preds_prob.max(dim=2)
+    preds_max_prob = preds_max_prob[index,1:]
     try:
-        char_confidence_score = char_pred_max_prob.cumprod(dim=0)[-1].cpu().tolist()
+        char_confidence_score = preds_max_prob.cumprod(dim=0)[-1].cpu().item()
     except:
         char_confidence_score = 0.0
-    print('char:', char_pred, char_confidence_score)
-
-    if opt.Transformer=='mgp-str':
-        # bpe
-        bpe_pred = bpe_preds_str[index]
-        bpe_pred_max_prob = bpe_preds_max_prob[index]
-        bpe_pred_EOS = bpe_pred.find('#')
-        bpe_pred = bpe_pred[:bpe_pred_EOS]
-
-        bpe_pred_index = bpe_preds_index[index].cpu().tolist()
-        try:
-            bpe_pred_EOS_index = bpe_pred_index.index(2)
-        except:
-            bpe_pred_EOS_index = -1
-        bpe_pred_max_prob = bpe_pred_max_prob[:bpe_pred_EOS_index+1]
-        try:
-            bpe_confidence_score = bpe_pred_max_prob.cumprod(dim=0)[-1].cpu().tolist()
-        except:
-            bpe_confidence_score = 0.0
-        print('bpe:', bpe_pred, bpe_confidence_score)
-
-        # wp
-        wp_pred = wp_preds_str[index]
-        wp_pred_max_prob = wp_preds_max_prob[index]
-        wp_pred_EOS = wp_pred.find('[SEP]')
-        wp_pred = wp_pred[:wp_pred_EOS]
-
-        wp_pred_index = wp_preds_index[index].cpu().tolist()
-        try:
-            wp_pred_EOS_index = wp_pred_index.index(102)
-        except:
-            wp_pred_EOS_index = -1
-        wp_pred_max_prob = wp_pred_max_prob[:wp_pred_EOS_index+1]
-        try:
-            wp_confidence_score = wp_pred_max_prob.cumprod(dim=0)[-1].cpu().tolist()
-        except:
-            wp_confidence_score = 0.0
-        print('wp:', wp_pred, wp_confidence_score)
+    print('char:', pred_str[index], char_confidence_score)
 
     # draw atten
     pil = transforms.ToPILImage()
     tensor = transforms.ToTensor()
     size = opt.imgH , opt.imgW
     resize = transforms.Resize(size=size, interpolation=0)
-    char_atten = attens[0][index]
-    if opt.Transformer=='mgp-str':
-        bpe_atten = attens[1][index]
-        wp_atten = attens[2][index]
-    if opt.imgW == 224:
-        char_atten = char_atten[:, 1:].view(-1, 4, 28)
-    else:
-        char_atten = char_atten[:,1:].view(-1, 8, 32)
-    char_atten = char_atten[1:char_pred_EOS+1]
-    draw_atten(opt.demo_imgs, char_pred, char_atten, pil, tensor, resize, flag='char')
+    # print(attens.shape)
+    char_atten = attens
+    # print(char_atten.shape)
+    # char_atten = char_atten.unsqueeze(0)  # [257] -> [1, 257]
+    # char_atten = char_atten.unsqueeze(-1)  # [1, 257] -> [1, 257, 1]
+
+    # 어텐션 맵 크기 조정
+    # target_height = opt.imgH // 2
+    # target_width = opt.imgW // 2
+    # char_atten = F.interpolate(char_atten.unsqueeze(0), size=(target_height, target_width), mode='bilinear', align_corners=False).squeeze(0)
+    char_atten = (char_atten - char_atten.min()) / (char_atten.max() - char_atten.min())
+    # if opt.imgW == 224:
+    #     char_atten = char_atten[:, 1:].view(-1, 4, 28)
+    # else:
+    #     char_atten = char_atten[:,1:].view(-1, 8, 32)
+    # char_atten = char_atten[1:char_pred_EOS+1]
+    draw_atten(opt.demo_imgs, pred_str, char_atten, pil, tensor, resize, flag='char')
 
 # class NormalizePAD(object):
 
@@ -193,7 +134,10 @@ def load_img(img_path, opt):
 
     image_tensor = Pad_img.unsqueeze(0)
     return image_tensor
-    
+
+
+
+
 def draw_atten(img_path, pred, attn, pil, tensor, resize, flag=''):
     image = PIL.Image.open(img_path).convert('RGB')
     # image = cv2.resize(np.array(image), (128, 32))
@@ -257,7 +201,8 @@ def blend_mask(image, mask, alpha=0.5, cmap='jet', color='b', color_alpha=1.0):
 
 def test(opt):
     """ model configuration """
-    converter = TokenLabelConverter(opt)
+    # converter = TokenLabelConverter(opt)
+    converter = CTCLabelConverter(opt.character)
     opt.num_class = len(converter.character)
     
     if opt.rgb:

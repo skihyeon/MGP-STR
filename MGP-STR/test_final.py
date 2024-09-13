@@ -128,178 +128,45 @@ def validation(model, criterion, evaluation_loader, converter, opt):
     valid_log.write(datetime.now().strftime('%Y-%m-%d %H:%M:%S') + "\n")
     valid_log.write("*" * 100 + "\n")
     for i, (image_tensors, labels, imgs_path) in enumerate(tqdm(evaluation_loader, desc="Validation Progress")):
-        batch_size = image_tensors.size(0)
-        length_of_data = length_of_data + batch_size
-        image = image_tensors.to(device)
         # For max length prediction
-        if opt.Transformer:
-            target = converter.encode(labels)
-        else:
+        start_time = time.time()
+                
+        if opt.Transformer in ["char-str"]:
+            forward_time = time.time() - start_time
+
+            batch_size = image_tensors.size(0)
+            length_of_data = length_of_data + batch_size
+            image = image_tensors.to(device)
             length_for_pred = torch.IntTensor([opt.batch_max_length] * batch_size).to(device)
             text_for_pred = torch.LongTensor(batch_size, opt.batch_max_length + 1).fill_(0).to(device)
+
             text_for_loss, length_for_loss = converter.encode(labels, batch_max_length=opt.batch_max_length)
 
-        start_time = time.time()
-        
-        if opt.Transformer in ["mgp-str"]:
-            attens, char_preds, bpe_preds, wp_preds = model(image, is_eval=True) # final
+            preds = model(image, is_eval=True)
+            preds = preds[1]
+            preds_size = torch.IntTensor([preds.size(1)] * batch_size)
 
-            forward_time = time.time() - start_time
-            cost = criterion(char_preds.contiguous().view(-1, char_preds.shape[-1]), target.contiguous().view(-1))
-            
-            # char pred
-            _, char_pred_index = char_preds.topk(1, dim=-1, largest=True, sorted=True)
-            char_pred_index = char_pred_index.view(-1, converter.batch_max_length)
-            length_for_pred = torch.IntTensor([converter.batch_max_length - 1] * batch_size).to(device)
-            char_preds_str = converter.char_decode(char_pred_index[:, 1:], length_for_pred)
-            char_pred_prob = F.softmax(char_preds, dim=2)
-            char_pred_max_prob, _ = char_pred_prob.max(dim=2)
-            char_preds_max_prob = char_pred_max_prob[:, 1:]
-
-            # bpe pred
-            _, bpe_preds_index = bpe_preds.topk(1, dim=-1, largest=True, sorted=True)
-            bpe_preds_index = bpe_preds_index.view(-1, converter.batch_max_length)
-            bpe_preds_str = converter.bpe_decode(bpe_preds_index[:,1:], length_for_pred)
-            bpe_preds_prob = F.softmax(bpe_preds, dim=2)
-            bpe_preds_max_prob, _ = bpe_preds_prob.max(dim=2)
-            bpe_preds_max_prob = bpe_preds_max_prob[:, 1:]
-            bpe_preds_index = bpe_preds_index[:, 1:]
-        
-            # wp pred
-            _, wp_preds_index = wp_preds.topk(1, dim=-1, largest=True, sorted=True)
-            wp_preds_index = wp_preds_index.view(-1, converter.batch_max_length)
-            wp_preds_str = converter.wp_decode(wp_preds_index[:,1:], length_for_pred)
-            wp_preds_prob = F.softmax(wp_preds, dim=2)
-            wp_preds_max_prob, _ = wp_preds_prob.max(dim=2)
-            wp_preds_max_prob = wp_preds_max_prob[:, 1:]
-            wp_preds_index = wp_preds_index[:, 1:]
-            
-            infer_time += forward_time
+            cost = criterion(preds.log_softmax(2).permute(1, 0, 2), text_for_loss, preds_size, length_for_loss)
             valid_loss_avg.add(cost)
-
+            # 예측 결과 디코딩
+            _, preds_index = preds.max(2)
+            preds_str = converter.decode(preds_index.data, preds_size.data)
             # calculate accuracy & confidence score
+            preds_prob = F.softmax(preds, dim=2)
+            preds_max_prob, _ = preds_prob.max(dim=2)
             confidence_score_list = []
-            for index,gt in enumerate(labels):
-                max_confidence_score = 0.0
-                out_pred = None
-                
-                # char
-                char_pred = char_preds_str[index]
-                char_pred_max_prob = char_preds_max_prob[index]
-                char_pred_EOS = char_pred.find('[s]')
-                char_pred = char_pred[:char_pred_EOS]  # prune after "end of sentence" token ([s])
-                # print(f'char_pred = {char_pred}, gt = {gt}, Correct: {char_pred == gt}')
-                if char_pred == gt:
+            # for index,gt in enumerate(labels):
+            for gt,pred,pred_max_prob in zip(labels, preds_str,preds_max_prob):
+                valid_log.write(f' GT: {gt}, Pred: {pred}, Correct: {pred == gt}\n')
+
+                if pred == gt:
                     char_n_correct += 1
-                char_pred_max_prob = char_pred_max_prob[:char_pred_EOS+1]
+
                 try:
-                    char_confidence_score = char_pred_max_prob.cumprod(dim=0)[-1]
+                    confidence_score = pred_max_prob.cumpord(dim=0)[-1]
                 except:
-                    char_confidence_score = 0.0
-                if char_confidence_score > max_confidence_score:
-                    max_confidence_score = char_confidence_score
-                    out_pred = char_pred
-                
-                # bpe
-                bpe_pred = bpe_preds_str[index]
-                bpe_pred_max_prob = bpe_preds_max_prob[index]
-                bpe_pred_EOS = bpe_pred.find('</s>')
-                bpe_pred = bpe_pred[:bpe_pred_EOS]
-                if bpe_pred == gt:
-                        bpe_n_correct += 1
-                bpe_pred_index = bpe_preds_index[index].cpu().tolist()
-                try:
-                    bpe_pred_EOS_index = bpe_pred_index.index(2)
-                except:
-                    bpe_pred_EOS_index = -1
-                bpe_pred_max_prob = bpe_pred_max_prob[:bpe_pred_EOS_index+1]
-                try:
-                    bpe_confidence_score = bpe_pred_max_prob.cumprod(dim=0)[-1]
-                except:
-                    bpe_confidence_score = 0.0
-                if bpe_confidence_score > max_confidence_score:
-                    max_confidence_score = bpe_confidence_score
-                    out_pred = bpe_pred
-                
-                # wp
-                wp_pred = wp_preds_str[index]
-                wp_pred_max_prob = wp_preds_max_prob[index]
-                wp_pred_EOS = wp_pred.find('[SEP]')
-                wp_pred = wp_pred[:wp_pred_EOS]
-                if wp_pred == gt:
-                        wp_n_correct += 1
-                wp_pred_index = wp_preds_index[index].cpu().tolist()
-                try:
-                    wp_pred_EOS_index = wp_pred_index.index(102)
-                except:
-                    wp_pred_EOS_index = -1
-                wp_pred_max_prob = wp_pred_max_prob[:wp_pred_EOS_index+1]
-                try:
-                    wp_confidence_score = wp_pred_max_prob.cumprod(dim=0)[-1]
-                except:
-                    wp_confidence_score = 0.0
-                if wp_confidence_score > max_confidence_score:
-                    max_confidence_score = wp_confidence_score
-                    out_pred = wp_pred
-
-                if out_pred == gt:
-                    out_n_correct += 1
-
-                valid_log.write(f' GT: {gt}, Pred: {char_pred}, Correct: {char_pred == gt}, BPE: {bpe_pred}, WP: {wp_pred}\n')
-                with open('predictions.txt', 'w', encoding='utf-8') as f:
-                    f.write(f'{char_pred}\n')
-                
-                confidence_score_list.append(char_confidence_score)
-                
-        elif opt.Transformer in ["char-str"]:
-            attens, char_preds = model(image, is_eval=True) # final
-
-            forward_time = time.time() - start_time
-            cost = criterion(char_preds.contiguous().view(-1, char_preds.shape[-1]), target.contiguous().view(-1))
-            
-            # char pred
-            _, char_pred_index = char_preds.topk(1, dim=-1, largest=True, sorted=True)
-            char_pred_index = char_pred_index.view(-1, converter.batch_max_length)
-            length_for_pred = torch.IntTensor([converter.batch_max_length - 1] * batch_size).to(device)
-            char_preds_str = converter.char_decode(char_pred_index[:, 1:], length_for_pred)
-            char_pred_prob = F.softmax(char_preds, dim=2)
-            char_pred_max_prob, _ = char_pred_prob.max(dim=2)
-            char_preds_max_prob = char_pred_max_prob[:, 1:]
-                
-            infer_time += forward_time
-            valid_loss_avg.add(cost)
-            
-            # calculate accuracy & confidence score
-            confidence_score_list = []
-            for index,gt in enumerate(labels):
-                max_confidence_score = 0.0
-                out_pred = None
-                
-                # char
-                char_pred = char_preds_str[index]
-                char_pred_max_prob = char_preds_max_prob[index]
-                char_pred_EOS = char_pred.find('[s]')
-                char_pred = char_pred[:char_pred_EOS]  # prune after "end of sentence" token ([s])
-                valid_log.write(f' GT: {gt}, Pred: {char_pred}, Correct: {char_pred == gt}\n')
-                # with open('predictions.txt', 'a', encoding='utf-8') as f:
-                    # f.write(f'{char_pred}\n')
-
-                if char_pred.strip() == gt:
-                    char_n_correct += 1
-                char_pred_max_prob = char_pred_max_prob[:char_pred_EOS+1]
-                try:
-                    char_confidence_score = char_pred_max_prob.cumprod(dim=0)[-1]
-                except:
-                    char_confidence_score = 0.0
-                if char_confidence_score > max_confidence_score:
-                    max_confidence_score = char_confidence_score
-                    out_pred = char_pred
-
-                if out_pred == gt:
-                    out_n_correct += 1
-
-                confidence_score_list.append(char_confidence_score)
-
+                    confidence_score = 0
+                confidence_score_list.append(confidence_score)
 
     char_accuracy = char_n_correct/float(length_of_data) * 100
     bpe_accuracy = bpe_n_correct / float(length_of_data) * 100
@@ -307,7 +174,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
     out_accuracy = out_n_correct / float(length_of_data) * 100
 
     valid_log.close()
-    return valid_loss_avg.val(), [char_accuracy, bpe_accuracy, wp_accuracy, out_accuracy], char_preds_str, confidence_score_list, labels, infer_time, length_of_data, [char_n_correct, bpe_n_correct, wp_n_correct, out_n_correct]
+    return valid_loss_avg.val(), [char_accuracy, 0, 0, 0], preds_str, confidence_score_list, labels, infer_time, length_of_data, [char_n_correct, bpe_n_correct, wp_n_correct, out_n_correct]
 
 
 def draw_atten(img_path, gt, pred, attn, pil, tensor, resize, count, flag=0):

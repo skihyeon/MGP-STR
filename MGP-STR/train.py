@@ -15,7 +15,7 @@ import torch.utils.data
 import numpy as np
 import copy
 
-from utils import Averager, TokenLabelConverter
+from utils import Averager, TokenLabelConverter, CTCLabelConverter
 from dataset import hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset
 from models import Model
 from test_final import validation
@@ -59,8 +59,8 @@ def train(opt):
     log.close()
         
     """ model configuration """
-    converter = TokenLabelConverter(opt)
-        
+    # converter = TokenLabelConverter(opt)
+    converter = CTCLabelConverter(opt.character)
     opt.num_class = len(converter.character)
 
     if opt.rgb:
@@ -109,8 +109,8 @@ def train(opt):
 
 
     """ setup loss """
-    criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
-        
+    # criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
+    criterion = nn.CTCLoss(zero_infinity=True).to(device)
     # loss averager
     loss_avg = Averager()
     char_loss_avg = Averager()
@@ -159,8 +159,6 @@ def train(opt):
         except:
             pass
     
-    # if utils.is_main_process() and opt.wandb:
-        # wandb.watch(model, criterion, log="all", log_freq=10)
     start_time = time.time()
     best_accuracy = -1
     iteration = start_iter
@@ -174,55 +172,30 @@ def train(opt):
         # train part
         image_tensors, labels = train_dataset.get_batch()
         image = image_tensors.to(device)
-
+        
         ##
         valid_indices = [i for i, label in enumerate(labels) if len(label) <= opt.batch_max_length]
-        if len(valid_indices) == 0:
-            # print("모든 라벨이 batch_max_length를 초과하여 이번 배치를 건너뜁니다.")
-            continue
         image_tensors = image_tensors[valid_indices]
         labels = [labels[i] for i in valid_indices]
         ##
 
         if (opt.Transformer in ["mgp-str"]):
-            len_target, char_target = converter.char_encode(labels) 
-            bpe_target = converter.bpe_encode(labels)
-            wp_target = converter.wp_encode(labels)
-            char_preds, bpe_preds, wp_preds = model(image)
-            char_loss = criterion(char_preds.view(-1, char_preds.shape[-1]), char_target.contiguous().view(-1))
-            bpe_pred_cost = criterion(bpe_preds.view(-1, bpe_preds.shape[-1]), bpe_target.contiguous().view(-1)) 
-            wp_pred_cost = criterion(wp_preds.view(-1, wp_preds.shape[-1]), wp_target.contiguous().view(-1)) 
-            cost = char_loss + bpe_pred_cost + wp_pred_cost
-
-            # length_for_pred = torch.IntTensor([converter.batch_max_length - 1]).to(device)
-            # _, char_pred_index = char_preds.topk(1, dim=-1, largest=True, sorted=True)
-            # char_pred_index = char_pred_index.view(-1, converter.batch_max_length)
-            # print(f"Char Target: {converter.char_decode(char_target, len_target)}, Char Output: {converter.char_decode(char_pred_index[:, 1:], length_for_pred)}")
-            # _, bpe_preds_index = bpe_preds.topk(1, dim=-1, largest=True, sorted=True)
-            # bpe_preds_index = bpe_preds_index.view(-1, converter.batch_max_length)
-            # print(f"BPE Target: {converter.bpe_decode(bpe_target, len_target)}, BPE Output: {converter.bpe_decode(bpe_preds_index[:, 1:], length_for_pred)}")
-            # _, wp_pred_index = wp_preds.topk(1, dim=-1, largest=True, sorted=True)
-            # wp_pred_index = wp_pred_index.view(-1, converter.batch_max_length)
-            # print(f"WP Target: {converter.wp_decode(wp_target, len_target)}, WP Output: {converter.wp_decode(wp_pred_index[:, 1:], length_for_pred)}")
-            # print(f"Char Loss: {char_loss.item()}, BPE Loss: {bpe_pred_cost.item()}, WP Loss: {wp_pred_cost.item()}")
-
-            char_loss_avg.add(char_loss)
-            if bpe_pred_cost:
-                bpe_loss_avg.add(bpe_pred_cost)
-            if wp_pred_cost:
-                wp_loss_avg.add(wp_pred_cost)
+            print("Do not support mgp-str")
+            break
 
         elif (opt.Transformer in ["char-str"]):
-            len_target, char_target = converter.char_encode(labels)
-
-            char_preds = model(image)[0]
+            text, length = converter.encode(labels, batch_max_length= opt.batch_max_length)
+            batch_size = image.size(0)
+            preds = model(image)
             
-            char_loss = criterion(char_preds.view(-1, char_preds.shape[-1]), char_target.contiguous().view(-1))
-            cost = char_loss 
+            preds_size = torch.IntTensor([preds.size(1)] * batch_size)
+            preds = preds.log_softmax(2).permute(1, 0, 2)
+            
+            cost = criterion(preds, text, preds_size, length)
 
         model.zero_grad()
         cost.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), opt.grad_clip)  # gradient clipping with 5 (Default)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), opt.grad_clip) 
         optimizer.step()
 
         loss_avg.add(cost)
@@ -231,32 +204,19 @@ def train(opt):
         pbar.set_postfix({"Train Loss": f"{loss_avg.val():0.5f}"})
         # pbar.update(1)
         if utils.is_main_process() and opt.wandb:
-        # wandb logging
-            if opt.Transformer in ["mgp-str"]:
-                wandb.log({
-                    "iteration": iteration,
-                    "train_loss": loss_avg.val(),
-                    "learning_rate": scheduler.get_last_lr()[0] if scheduler else opt.lr,
-                    "char_loss": char_loss_avg.val(),
-                    "bpe_loss": bpe_loss_avg.val(),
-                    "wp_loss": wp_loss_avg.val()
-                    })
-            else:
-                wandb.log({
-                    "iteration": iteration,
-                    "train_loss": loss_avg.val(),
-                    "learning_rate": scheduler.get_last_lr()[0] if scheduler else opt.lr,
-                    })
+            wandb.log({
+                "iteration": iteration,
+                "train_loss": loss_avg.val(),
+                "learning_rate": scheduler.get_last_lr()[0] if scheduler else opt.lr,
+                })
 
         # validation part
-        # if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0 or iteration == 0): # To see training progress, we also conduct validation when 'iteration == 0'  
         if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0):
             elapsed_time = time.time() - start_time
             # for log
             print("LR",scheduler.get_last_lr()[0])
             with open(f'{opt.saved_path}/{opt.exp_name}/log_train.txt', 'a') as log:
                 model.eval()
-                
                 with torch.no_grad():
                     valid_loss, current_accuracys, char_preds, confidence_score, labels, infer_time, length_of_data, _ = validation(
                         model, criterion, valid_loader, converter, opt)
@@ -271,8 +231,6 @@ def train(opt):
                 loss_avg.reset()
                 current_model_log = f'{"char_accuracy":17s}: {char_accuracy:0.3f}, {"bpe_accuracy":17s}: {bpe_accuracy:0.3f}, {"wp_accuracy":17s}: {wp_accuracy:0.3f}, {"fused_accuracy":17s}: {final_accuracy:0.3f}'
                 
-
-                # keep best accuracy model (on valid dataset)
                 if cur_best > best_accuracy:
                     best_accuracy = cur_best
                     torch.save(model.state_dict(), f'{opt.saved_path}/{opt.exp_name}/best_accuracy.pth')
@@ -284,17 +242,7 @@ def train(opt):
 
                 # wandb logging for validation
                 if opt.wandb:
-                    if opt.Transformer in ["mgp-str"]:
-                        wandb.log({
-                            "iteration": iteration,
-                            "valid_loss": valid_loss,
-                            "char_accuracy": char_accuracy,
-                            "bpe_accuracy": bpe_accuracy,
-                            "wp_accuracy": wp_accuracy,
-                            "final_accuracy": final_accuracy,
-                            "best_accuracy": best_accuracy
-                        })
-                    elif opt.Transformer in ["char-str"]:
+                    if opt.Transformer in ["char-str"]:
                         wandb.log({
                             "iteration": iteration,
                             "valid_loss": valid_loss,
@@ -303,25 +251,11 @@ def train(opt):
                             "best_accuracy": best_accuracy
                         })
 
-                # show some predicted results
                 dashed_line = '-' * 80
                 head = f'{"Ground Truth":25s} | {"Prediction":25s} | Confidence Score & T/F'
                 predicted_result_log = f'{dashed_line}\n{head}\n{dashed_line}\n'
                 for gt, pred, confidence in zip(labels[:5], char_preds[:5], confidence_score[:5]):
-                    if opt.Transformer:
-                        pred = pred[:pred.find('[s]')]
-                    elif 'Attn' in opt.Prediction:
-                        gt = gt[:gt.find('[s]')]
-                        pred = pred[:pred.find('[s]')]
-
-                    # To evaluate 'case sensitive model' with alphanumeric and case insensitve setting.
-                    # if opt.sensitive and opt.data_filtering_off:
-                        # pred = pred.lower()
-                        # gt = gt.lower()
-                        # alphanumeric_case_insensitve = '0123456789abcdefghijklmnopqrstuvwxyz'
-                        # out_of_alphanumeric_case_insensitve = f'[^{alphanumeric_case_insensitve}]'
-                        # pred = re.sub(out_of_alphanumeric_case_insensitve, '', pred)
-                        # gt = re.sub(out_of_alphanumeric_case_insensitve, '', gt)
+                    # pred = pred[:pred.find('[s]')]
 
                     predicted_result_log += f'{gt:25s} | {pred:25s} | {confidence:0.4f}\t{str(pred == gt)}\n'
                 predicted_result_log += f'{dashed_line}'
