@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import argparse
 from transformers import BertTokenizerFast, BertTokenizer, GPT2Tokenizer, PreTrainedTokenizerFast
+import re
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -218,22 +219,26 @@ def NED(s1, s2):
         s2_korean = re.sub('[^가-힣]', '', s2)
         s1_non_korean = re.sub('[가-힣]', '', s1)
         s2_non_korean = re.sub('[가-힣]', '', s2)
+        s1_non_korean = s1_non_korean.lower()
+        s2_non_korean = s2_non_korean.lower()
+        ned_korean = 0
+        ned_non_korean = 0
         
-        if not s1_korean or not s2_korean:
-            ned_korean = 0
-        else:
+        if s1_korean or s2_korean:
             decompose_s1_korean = ''.join(comp for c in s1_korean for comp in decompose(c))
             decompose_s2_korean = ''.join(comp for c in s2_korean for comp in decompose(c))
             max_len_korean = max(len(s1_korean), len(s2_korean))
             ned_korean = (levenshtein(decompose_s1_korean, decompose_s2_korean) / 3) / max_len_korean
         
-        if not s1_non_korean or not s2_non_korean:
-            ned_non_korean = 0
-        else:
+        if s1_non_korean or s2_non_korean:
             max_len_non_korean = max(len(s1_non_korean), len(s2_non_korean))
             ned_non_korean = levenshtein(s1_non_korean, s2_non_korean) / max_len_non_korean
         
-        ned = (ned_korean + ned_non_korean) / 2
+        if s1_korean and s2_korean and s1_non_korean and s2_non_korean:
+            ned = (ned_korean + ned_non_korean) / 2
+        else:
+            ned = max(ned_korean, ned_non_korean)
+        
         return ned
     
     ned = cal_ned(s1, s2)

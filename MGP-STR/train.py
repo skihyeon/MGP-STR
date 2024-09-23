@@ -249,7 +249,7 @@ def train(opt):
                             "char_accuracy": char_accuracy,
                             "final_accuracy": final_accuracy,
                             "best_accuracy": best_accuracy,
-                            "NED": ned
+                            "NED": (1-ned)
                         })
 
                 dashed_line = '-' * 80
