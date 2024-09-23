@@ -44,6 +44,8 @@ def create_char_str(batch_max_length, num_tokens, model=None, checkpoint_path=''
     
 class CHARSTR(VisionTransformer):
     def __init__(self, batch_max_length, num_classes, *args, **kwargs):
+        kwargs.pop('pretrained_cfg', None) 
+        kwargs.pop('pretrained_cfg_overlay', None) 
         super().__init__(*args, **kwargs)
         
         self.batch_max_length = batch_max_length
