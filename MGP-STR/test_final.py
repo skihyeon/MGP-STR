@@ -19,7 +19,7 @@ import cv2
 from torchvision import transforms
 import torchvision.utils as vutils
 
-from utils import Averager, TokenLabelConverter
+from utils import Averager, TokenLabelConverter, CTCLabelConverter
 from dataset import hierarchical_dataset, AlignCollate, ImgDataset
 from models import Model
 from utils import get_args
@@ -165,14 +165,16 @@ def validation(model, criterion, evaluation_loader, converter, opt):
                     char_n_correct += 1
 
                 try:
-                    confidence_score = pred_max_prob.cumpord(dim=0)[-1]
+                    confidence_score = pred_max_prob.cumprod(dim=0)[-1]
                 except:
                     confidence_score = 0
                 
-                try:
-                    ned = NED(pred, gt)
-                except:
-                    ned = 0
+                # print('Pred, GT :', pred, gt)
+                # try:
+                ned = NED(pred, gt)
+                # print('NED: ', ned)
+                # except:
+                    # ned = 0
                 confidence_score_list.append(confidence_score)
                 NEDs.append(ned)
 
@@ -227,7 +229,8 @@ def blend_mask(image, mask, alpha=0.5, cmap='jet', color='b', color_alpha=1.0):
 
 def test(opt):
     """ model configuration """
-    converter = TokenLabelConverter(opt)
+    # converter = TokenLabelConverter(opt)
+    converter = CTCLabelConverter(opt.character)
     opt.num_class = len(converter.character)
     
     if opt.rgb:
@@ -255,8 +258,8 @@ def test(opt):
     # os.system(f'cp {opt.saved_model} ./result/{opt.exp_name}/')
 
     """ setup loss """
-    criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
-
+    # criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
+    criterion = torch.nn.CTCLoss(zero_infinity=True).to(device)
     """ evaluation """
     model.eval()
     opt.eval = True
@@ -267,6 +270,7 @@ def test(opt):
             # log = open(f'./result/{opt.exp_name}/log_evaluation.txt', 'a')
             AlignCollate_evaluation = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, opt=opt)
             eval_data, eval_data_log = hierarchical_dataset(root=opt.eval_data, opt=opt)
+            eval_data = torch.utils.data.Subset(eval_data, range(int(len(eval_data)/10)))
             evaluation_loader = torch.utils.data.DataLoader(
                 eval_data, batch_size=opt.batch_size,
                 shuffle=False,
@@ -284,7 +288,7 @@ def test(opt):
             wp_total_correct_number = 0
             fused_total_correct_number = 0
 
-            _, accuracys, _, _, _, infer_time, length_of_data, accur_numbers = validation(
+            _, accuracys, _, _, _, infer_time, length_of_data, accur_numbers,ned = validation(
             model, criterion, evaluation_loader, converter, opt)
             char_list_accuracy.append(f'{accuracys[0]:0.3f}')
             bpe_list_accuracy.append(f'{accuracys[1]:0.3f}')
@@ -299,7 +303,7 @@ def test(opt):
             fused_total_correct_number += accur_numbers[3]
             #log.write(eval_data_log)
             print(f'char_Acc {accuracys[0]:0.3f}\t bpe_Acc {accuracys[1]:0.3f}\t wp_Acc {accuracys[2]:0.3f}\t  fused_Acc {accuracys[3]:0.3f}')
-
+            print(f'NED: {ned}')
 
 # https://github.com/clovaai/deep-text-recognition-benchmark/issues/125
 def get_flops(model, opt, converter):
