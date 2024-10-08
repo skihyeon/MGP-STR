@@ -2,20 +2,15 @@ import os
 import sys
 import time
 import random
-import string
-import argparse
-import re
-import pickle
 
 import torch
 import torch.backends.cudnn as cudnn
-import torch.nn.init as init
 import torch.optim as optim
 import torch.utils.data
 import numpy as np
 import copy
 
-from utils import Averager, TokenLabelConverter, CTCLabelConverter
+from utils import Averager, CTCLabelConverter
 from dataset import hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset
 from models import Model
 from test_final import validation
@@ -23,8 +18,6 @@ from utils import get_args
 import utils_dist as utils
 
 import torch.nn as nn
-from torch.optim.lr_scheduler import CosineAnnealingLR
-import torch.nn.functional as F
 from tqdm.auto import tqdm
 
 import wandb
@@ -59,7 +52,6 @@ def train(opt):
     log.close()
         
     """ model configuration """
-    # converter = TokenLabelConverter(opt)
     converter = CTCLabelConverter(opt.character)
     opt.num_class = len(converter.character)
 
@@ -67,27 +59,14 @@ def train(opt):
         opt.input_channel = 3
 
     model = Model(opt)
-
-    # print(model)
-
-    # data parallel for multi-GPU
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[opt.gpu], find_unused_parameters=True)
     
     model.train()
-    
-    # if opt.saved_model != '':
-        # print(f'loading pretrained model from {opt.saved_model}')
-        # model.load_state_dict(torch.load(opt.saved_model, map_location='cpu'), strict=False)
-    
     if opt.saved_model != '':
         print(f'loading pretrained model from {opt.saved_model}')
         state_dict = torch.load(opt.saved_model, map_location='cpu')
-        
-        # 새 모델의 state_dict
         new_state_dict = model.state_dict()
-        
-        # 기존 가중치 복사 및 새 가중치 초기화
         for name, param in state_dict.items():
             if name in new_state_dict:
                 if new_state_dict[name].shape != param.shape:
@@ -103,19 +82,14 @@ def train(opt):
                             nn.init.zeros_(new_state_dict[name][min_shape[0]:])
                 else:
                     new_state_dict[name] = param
-        
-        # 새 state_dict 로드
         model.load_state_dict(new_state_dict)
 
 
     """ setup loss """
-    # criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
     criterion = nn.CTCLoss(zero_infinity=True).to(device)
     # loss averager
     loss_avg = Averager()
     char_loss_avg = Averager()
-    bpe_loss_avg = Averager()
-    wp_loss_avg = Averager()
 
     # filter that only require gradient decent
     filtered_parameters = []
@@ -132,18 +106,15 @@ def train(opt):
         optimizer = optim.Adadelta(filtered_parameters, lr=opt.lr, rho=opt.rho, eps=opt.eps)
 
     if opt.scheduler:
-        # scheduler = CosineAnnealingLR(optimizer, T_max=int(opt.num_iter))
         scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=1000000)
 
     """ final options """
-    # print(opt)
     with open(f'{opt.saved_path}/{opt.exp_name}/opt.txt', 'a') as opt_file:
         opt_log = '------------ Options -------------\n'
         args = vars(opt)
         for k, v in args.items():
             opt_log += f'{str(k)}: {str(v)}\n'
         opt_log += '---------------------------------------\n'
-        #print(opt_log)
         opt_file.write(opt_log)
         total_params = int(sum(params_num))
         total_params = f'Trainable network params num : {total_params:,}'
@@ -169,29 +140,23 @@ def train(opt):
     pbar.update(iteration)
 
     while(True):
-        # train part
         image_tensors, labels = train_dataset.get_batch()
         image = image_tensors.to(device)
-        
+
         ##
         valid_indices = [i for i, label in enumerate(labels) if len(label) <= opt.batch_max_length]
         image_tensors = image_tensors[valid_indices]
         labels = [labels[i] for i in valid_indices]
         ##
 
-        if (opt.Transformer in ["mgp-str"]):
-            print("Do not support mgp-str")
-            break
-
-        elif (opt.Transformer in ["char-str"]):
-            text, length = converter.encode(labels, batch_max_length= opt.batch_max_length)
-            batch_size = image.size(0)
-            preds = model(image)
-            
-            preds_size = torch.IntTensor([preds.size(1)] * batch_size)
-            preds = preds.log_softmax(2).permute(1, 0, 2)
-            
-            cost = criterion(preds, text, preds_size, length)
+        text, length = converter.encode(labels, batch_max_length= opt.batch_max_length)
+        batch_size = image.size(0)
+        preds = model(image)
+        
+        preds_size = torch.IntTensor([preds.size(1)] * batch_size)
+        preds = preds.log_softmax(2).permute(1, 0, 2)
+        
+        cost = criterion(preds, text, preds_size, length)
 
         model.zero_grad()
         cost.backward()
@@ -210,21 +175,16 @@ def train(opt):
                 "learning_rate": scheduler.get_last_lr()[0] if scheduler else opt.lr,
                 })
 
-        # validation part
         if utils.is_main_process() and ((iteration + 1) % opt.valInterval == 0):
             elapsed_time = time.time() - start_time
-            # for log
             print("LR",scheduler.get_last_lr()[0])
             with open(f'{opt.saved_path}/{opt.exp_name}/log_train.txt', 'a') as log:
                 model.eval()
                 with torch.no_grad():
-                    valid_loss, current_accuracys, char_preds, confidence_score, labels, infer_time, length_of_data, _, ned = validation(
+                    valid_loss, current_accuracy, char_preds, confidence_score, labels, infer_time, length_of_data, _, ned = validation(
                         model, criterion, valid_loader, converter, opt)
-                    char_accuracy = current_accuracys[0]
-                    bpe_accuracy = current_accuracys[1]
-                    wp_accuracy = current_accuracys[2]
-                    final_accuracy = current_accuracys[3]
-                    cur_best = max(char_accuracy, bpe_accuracy, wp_accuracy, final_accuracy, ned)
+                    char_accuracy = current_accuracy
+                    cur_best = max(char_accuracy, ned)
                 model.train()
 
                 loss_log = f'[{iteration+1}/{opt.num_iter}] LR: {scheduler.get_last_lr()[0]:0.5f}, Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
@@ -247,7 +207,6 @@ def train(opt):
                             "iteration": iteration,
                             "valid_loss": valid_loss,
                             "char_accuracy": char_accuracy,
-                            "final_accuracy": final_accuracy,
                             "best_accuracy": best_accuracy,
                             "NED": (1-ned)
                         })
@@ -256,14 +215,11 @@ def train(opt):
                 head = f'{"Ground Truth":25s} | {"Prediction":25s} | Confidence Score & T/F'
                 predicted_result_log = f'{dashed_line}\n{head}\n{dashed_line}\n'
                 for gt, pred, confidence in zip(labels[:5], char_preds[:5], confidence_score[:5]):
-                    # pred = pred[:pred.find('[s]')]
-
                     predicted_result_log += f'{gt:25s} | {pred:25s} | {confidence:0.4f}\t{str(pred == gt)}\n'
                 predicted_result_log += f'{dashed_line}'
                 print(predicted_result_log)
                 log.write(predicted_result_log + '\n')
 
-        # save model per 1e+5 iter.
         if utils.is_main_process() and (iteration + 1) % 5e+3 == 0:
             torch.save(
                 model.state_dict(), f'{opt.saved_path}/{opt.exp_name}/iter_{iteration+1}.pth')
@@ -310,9 +266,6 @@ if __name__ == '__main__':
     os.makedirs(f'{opt.saved_path}/{opt.exp_name}', exist_ok=True)
 
     """ vocab / character number configuration """
-    # if opt.sensitive:
-        # opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
-    
     utils.init_distributed_mode(opt)
 
     print(opt)
