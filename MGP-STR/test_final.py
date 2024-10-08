@@ -328,14 +328,14 @@ if __name__ == '__main__':
     opt = get_args(is_train=False)
 
     """ vocab / character number configuration """
-    if opt.sensitive:
-        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
-    import pickle
-    if 'pkl' in opt.character:
-        with open(opt.character, 'rb') as f:
-            extended_char = pickle.load(f)
-        extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','@'])
-        opt.character = ''.join(extended_char)
+    # if opt.sensitive:
+    #     opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+    # import pickle
+    # if 'pkl' in opt.character:
+    #     with open(opt.character, 'rb') as f:
+    #         extended_char = pickle.load(f)
+    #     extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','@'])
+    #     opt.character = ''.join(extended_char)
 
     cudnn.benchmark = True
     cudnn.deterministic = True

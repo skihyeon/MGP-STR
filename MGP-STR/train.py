@@ -293,14 +293,15 @@ def init_wandb(cfg):
 if __name__ == '__main__':
 
     opt = get_args()
-    if 'pkl' in opt.character:
-        with open(opt.character, 'rb') as f:
-            extended_char = pickle.load(f)
-        ## '金','整','公','簿' 추후 추가
-        extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','@'])
-        opt.character = ''.join(extended_char)
-
-
+    # if 'pkl' in opt.character:
+    #     with open(opt.character, 'rb') as f:
+    #         extended_char = pickle.load(f)
+    #     ## '金','整','公','簿' 추후 추가
+    #     extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','@'])
+    #     opt.character = ''.join(extended_char)
+    import ocr_dict
+    opt.character = ocr_dict.all_chars
+    
     if not opt.exp_name:
         opt.exp_name = f'{opt.TransformerModel}' if opt.Transformer else f'{opt.Transformation}-{opt.FeatureExtraction}-{opt.SequenceModeling}-{opt.Prediction}'
 
