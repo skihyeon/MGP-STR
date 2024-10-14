@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import argparse
 from transformers import BertTokenizerFast, BertTokenizer, GPT2Tokenizer, PreTrainedTokenizerFast
+import re
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -98,6 +99,56 @@ class TokenLabelConverter(object):
             texts.append(''.join(tokenlist))
         return texts
 
+
+class CTCLabelConverter(object):
+    """ Convert between text-label and text-index """
+
+    def __init__(self, character):
+        # character (str): set of the possible characters.
+        dict_character = list(character)
+
+        self.dict = {}
+        for i, char in enumerate(dict_character):
+            # NOTE: 0 is reserved for 'CTCblank' token required by CTCLoss
+            self.dict[char] = i + 1
+
+        self.character = ['[CTCblank]'] + dict_character  # dummy '[CTCblank]' token for CTCLoss (index 0)
+
+    def encode(self, text, batch_max_length=25):
+        """convert text-label into text-index.
+        input:
+            text: text labels of each image. [batch_size]
+            batch_max_length: max length of text label in the batch. 25 by default
+
+        output:
+            text: text index for CTCLoss. [batch_size, batch_max_length]
+            length: length of each text. [batch_size]
+        """
+        length = [len(s) for s in text]
+
+        # The index used for padding (=0) would not affect the CTC loss calculation.
+        batch_text = torch.LongTensor(len(text), batch_max_length).fill_(0)
+        for i, t in enumerate(text):
+            text = list(t)
+            text = [self.dict[char] for char in text]
+            batch_text[i][:len(text)] = torch.LongTensor(text)
+        return (batch_text.to(device), torch.IntTensor(length).to(device))
+
+    def decode(self, text_index, length):
+        """ convert text-index into text-label. """
+        texts = []
+        for index, l in enumerate(length):
+            t = text_index[index, :]
+
+            char_list = []
+            for i in range(l):
+                if t[i] != 0 and (not (i > 0 and t[i - 1] == t[i])):  # removing repeated characters and blank.
+                    char_list.append(self.character[t[i]])
+            text = ''.join(char_list)
+
+            texts.append(text)
+        return texts
+
 class Averager(object):
     """Compute average for torch.Tensor, used for loss average."""
 
@@ -119,6 +170,79 @@ class Averager(object):
         if self.n_count != 0:
             res = self.sum / float(self.n_count)
         return res
+
+
+def NED(s1, s2):
+    def levenshtein(s1, s2, cost=None):
+        if len(s1) < len(s2):
+            s1, s2 = s2, s1
+
+        if len(s2) == 0:
+            return len(s1)
+
+        if cost is None:
+            cost = {}
+
+        def substitution_cost(c1, c2):
+            return 0 if c1 == c2 else cost.get((c1, c2), 1)
+
+        previous_row = list(range(len(s2) + 1))
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + substitution_cost(c1, c2)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+
+        return previous_row[-1]
+    def decompose(c):
+        if not character_is_korean(c):
+            return None
+        i = ord(c)
+        if 0x3131 <= i <= 0x3146 or 0x3147 <= i <= 0x315B:
+            return (c, ' ', ' ') if 0x3131 <= i <= 0x3146 else (' ', c, ' ')
+
+        i -= 0xAC00
+        cho  = chr((i // 0x24C) + 0x1100)
+        jung = chr(((i % 0x24C) // 0x1C) + 0x1161)
+        jong = chr(((i % 0x24C) % 0x1C) + 0x11A7) if ((i % 0x24C) % 0x1C) != 0 else ' '
+        return (cho, jung, jong)
+
+    def character_is_korean(c):
+        i = ord(c)
+        return (0xAC00 <= i <= 0xD7A3) or (0x3131<= i <= 0x3146) or (0x3147 <= i <= 0x315B)
+    
+    def cal_ned(s1, s2):
+        s1_korean = re.sub('[^가-힣]', '', s1)
+        s2_korean = re.sub('[^가-힣]', '', s2)
+        s1_non_korean = re.sub('[가-힣]', '', s1)
+        s2_non_korean = re.sub('[가-힣]', '', s2)
+        s1_non_korean = s1_non_korean.lower()
+        s2_non_korean = s2_non_korean.lower()
+        ned_korean = 0
+        ned_non_korean = 0
+        
+        if s1_korean or s2_korean:
+            decompose_s1_korean = ''.join(comp for c in s1_korean for comp in decompose(c))
+            decompose_s2_korean = ''.join(comp for c in s2_korean for comp in decompose(c))
+            max_len_korean = max(len(s1_korean), len(s2_korean))
+            ned_korean = (levenshtein(decompose_s1_korean, decompose_s2_korean) / 3) / max_len_korean
+        
+        if s1_non_korean or s2_non_korean:
+            max_len_non_korean = max(len(s1_non_korean), len(s2_non_korean))
+            ned_non_korean = levenshtein(s1_non_korean, s2_non_korean) / max_len_non_korean
+        
+        if s1_korean and s2_korean and s1_non_korean and s2_non_korean:
+            ned = (ned_korean + ned_non_korean) / 2
+        else:
+            ned = max(ned_korean, ned_non_korean)
+        
+        return ned
+    
+    ned = cal_ned(s1, s2)
+    return ned
 
 
 def get_device(verbose=True):
@@ -179,7 +303,7 @@ def get_args(is_train=True):
     parser.add_argument('--Transformer', type=str, required=True, help='Transformer stage. mgp-str|char-str')
 
     choices = ["mgp_str_base_patch4_3_32_128", "mgp_str_large_patch4_3_32_128", "mgp_str_tiny_patch4_3_32_128", 
-                "mgp_str_small_patch4_3_32_128", "char_str_base_patch4_3_32_128", "char_str_large_patch8_1_32_224"]
+                "mgp_str_small_patch4_3_32_128", "char_str_base_patch4_3_32_128", "char_str_large_patch8_1_32_224", "char_str_custom"]
     parser.add_argument('--TransformerModel', default='', help='Which mgp_str transformer model', choices=choices)
     parser.add_argument('--Transformation', type=str, default='', help='Transformation stage. None|TPS')
     parser.add_argument('--FeatureExtraction', type=str, default='',
