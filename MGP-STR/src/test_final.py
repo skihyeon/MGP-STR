@@ -88,7 +88,7 @@ def test(opt):
     with torch.no_grad():
         AlignCollate_evaluation = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD, opt=opt)
         eval_data, eval_data_log = hierarchical_dataset(root=opt.eval_data, opt=opt)
-        eval_data = torch.utils.data.Subset(eval_data, range(int(len(eval_data)/10)))
+        eval_data = torch.utils.data.Subset(eval_data, range(int(len(eval_data))))
         evaluation_loader = torch.utils.data.DataLoader(
             eval_data, batch_size=opt.batch_size,
             shuffle=False,
@@ -100,8 +100,14 @@ def test(opt):
         total_evaluation_data_number = 0
         char_total_correct_number = 0
 
-        _, char_accuracy, _, _, _, infer_time, length_of_data, char_accur_num, ned = validation(model, criterion, evaluation_loader, converter, opt)
+        _, char_accuracy, preds_str, _, labels, infer_time, length_of_data, char_accur_num, ned = validation(model, criterion, evaluation_loader, converter, opt)
         char_list_accuracy.append(f'{char_accuracy:0.3f}')
+
+        for i, (pred, gt) in enumerate(zip(preds_str, labels)):
+            if pred.lower() != gt.lower():
+                print(f"GT: {gt} || Pred: {pred} || Correct: {gt.lower()==pred.lower()}")
+            # if i % (len(preds_str)//100) == 0:
+                # print(f"GT: {gt} || Pred: {pred} || Correct: {gt.lower()==pred.lower()}")
 
         total_forward_time += infer_time
         total_evaluation_data_number += len(eval_data)
