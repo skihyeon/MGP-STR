@@ -43,15 +43,17 @@ def validation(model, criterion, evaluation_loader, converter, opt):
 
         NEDs = []
         for gt,pred,pred_max_prob in zip(labels, preds_str,preds_max_prob):
-            if pred == gt:
+            pred_strip = pred.strip()
+            gt_strip = gt.strip()
+            if pred_strip == gt_strip:
                 char_n_correct += 1
             try:
                 confidence_score = pred_max_prob.cumprod(dim=0)[-1]
             except:
                 confidence_score = 0
-            ned = NED(pred, gt)
-            confidence_score_list.append(confidence_score)
+            ned = NED(pred_strip, gt_strip)
             NEDs.append(ned)
+            confidence_score_list.append(confidence_score)
 
     char_accuracy = char_n_correct/float(length_of_data) * 100
     
@@ -103,18 +105,17 @@ def test(opt):
         _, char_accuracy, preds_str, _, labels, infer_time, length_of_data, char_accur_num, ned = validation(model, criterion, evaluation_loader, converter, opt)
         char_list_accuracy.append(f'{char_accuracy:0.3f}')
 
-        for i, (pred, gt) in enumerate(zip(preds_str, labels)):
-            if pred.lower() != gt.lower():
-                print(f"GT: {gt} || Pred: {pred} || Correct: {gt.lower()==pred.lower()}")
-            # if i % (len(preds_str)//100) == 0:
-                # print(f"GT: {gt} || Pred: {pred} || Correct: {gt.lower()==pred.lower()}")
+        with open('valid_result.log', 'a') as log_file:
+            for pred, gt in zip(preds_str, labels):
+                correct = gt.lower() == pred.lower()
+                log_file.write(f"GT: {gt} || Pred: {pred} || Correct: {correct}\n")
 
         total_forward_time += infer_time
         total_evaluation_data_number += len(eval_data)
         char_total_correct_number += char_accur_num
 
         print(f'char_Acc {char_accuracy:0.3f}')
-        print(f'NED: {ned}')
+        print(f'NED score: {1-ned:0.4f} // ned: {ned: 0.5f}')
 
 if __name__ == '__main__':
     opt = get_args(is_train=False)
@@ -122,14 +123,18 @@ if __name__ == '__main__':
     """ vocab / character number configuration """
     # if opt.sensitive:
     #     opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
-    # import pickle
-    # if 'pkl' in opt.character:
-    #     with open(opt.character, 'rb') as f:
-    #         extended_char = pickle.load(f)
-    #     extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','@'])
-    #     opt.character = ''.join(extended_char)
-    import ocr_dict
-    opt.character = ocr_dict.all_chars
+    
+    import pickle
+    if 'pkl' in opt.character:
+        with open(opt.character, 'rb') as f:
+            extended_char = pickle.load(f)
+        extended_char.extend(['±',' ','△','※','☑','☐','⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳','@'])
+        opt.character = ''.join(extended_char)
+    else:
+        import ocr_dict
+        opt.character = ocr_dict.all_chars
+    
+    
     cudnn.benchmark = True
     cudnn.deterministic = True
     opt.num_gpu = torch.cuda.device_count()

@@ -1,4 +1,5 @@
 special_characters=".,()※!\"#$%&\'*+-/:;<=>?[\]^_`{|}~©°²½’“”→∇∼「」± △※☑☐⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳@"
+# ÷ 추가 필요
 nums="0123456789"
 en_lower="abcdefghijklmnopqrstuvwxyz"
 en_upper="ABCDEFGHIJKLMNOPQRSTUVWXYZ"

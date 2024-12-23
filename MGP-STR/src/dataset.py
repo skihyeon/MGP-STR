@@ -64,8 +64,8 @@ class Batch_Balanced_Dataset(object):
         Total_batch_size = 0
         for selected_d, batch_ratio_d in zip(opt.select_data, opt.batch_ratio):
             _batch_size = max(round(opt.batch_size * float(batch_ratio_d)), 1)
-            if opt.batch_size <=50:
-                _batch_size = 1
+            # if opt.batch_size <=50:
+            #     _batch_size = 1
             print(dashed_line)
             log.write(dashed_line + '\n')
             _dataset, _dataset_log = hierarchical_dataset(root=opt.train_data, opt=opt, select_data=[selected_d])
